@@ -1,0 +1,25 @@
+# Render Blueprint. Import this instead of clicking through the dashboard:
+# New > Blueprint > pick this repo, and Render reads every setting below.
+services:
+  - type: web
+    name: chroma-royale
+    runtime: node
+    plan: free
+
+    # package.json lives in server/, not the repo root, so Render's Node
+    # autodetect needs pointing at it. The client files (index.html, src/) stay
+    # at the root — server/index.js serves them via path.join(__dirname, '..'),
+    # and Render clones the whole repo, so that path still resolves.
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+
+    # Render restarts the instance if this stops answering.
+    healthCheckPath: /healthz
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT is injected by Render and already honoured in server/index.js.
+      # DATA_DIR only helps if you attach a disk (paid) — on the free plan the
+      # filesystem is wiped on every deploy and restart regardless.

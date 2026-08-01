@@ -1,0 +1,16 @@
+{
+  "name": "chroma-royale-server",
+  "version": "1.0.0",
+  "description": "Multiplayer server for Chroma Royale",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

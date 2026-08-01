@@ -1,0 +1,13 @@
+node_modules/
+
+# Player stats are generated at runtime. Committing them would overwrite live
+# player data with a stale snapshot on every deploy.
+server/data/
+*.log
+
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.vscode/
+.idea/

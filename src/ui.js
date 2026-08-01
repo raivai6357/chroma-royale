@@ -1,0 +1,138 @@
+import {
+  COLORS, PASSIVES, GAME_DURATION, DASH_COOLDOWN, DASH_MIN_HP, CRIT_HP, dist2
+} from './utils.js';
+
+// ---------- UI refs ----------
+const startScreen = document.getElementById('startScreen');
+const endScreen = document.getElementById('endScreen');
+const hud = document.getElementById('hud');
+const startBtn = document.getElementById('startBtn');
+const againBtn = document.getElementById('againBtn');
+const hpFill = document.getElementById('hpFill');
+const hpNum = document.getElementById('hpNum');
+const dashFill = document.getElementById('dashFill');
+const dashStateEl = document.getElementById('dashState');
+const passiveStateEl = document.getElementById('passiveState');
+const timerEl = document.getElementById('timer');
+const aliveCountEl = document.getElementById('aliveCount');
+const toastEl = document.getElementById('toast');
+const edgeWarn = document.getElementById('edgeWarn');
+const endEyebrow = document.getElementById('endEyebrow');
+const endTitle = document.getElementById('endTitle');
+const endSub = document.getElementById('endSub');
+const dashBtn = document.getElementById('dashBtn');
+// pre-match countdown overlay
+const prematch = document.getElementById('prematch');
+const pmCount = document.getElementById('pmCount');
+const pmRing = document.getElementById('pmRing');
+const pmSwatch = document.getElementById('pmSwatch');
+const pmColor = document.getElementById('pmColor');
+const pmPassive = document.getElementById('pmPassive');
+// spectator bar (shown once the player is out but the round is still running)
+const spectate = document.getElementById('spectate');
+const specAlive = document.getElementById('specAlive');
+const leaveBtn = document.getElementById('leaveBtn');
+
+export const ui = {
+  startScreen, endScreen, hud, startBtn, againBtn,
+  endEyebrow, endTitle, endSub, leaveBtn
+};
+
+// ---------- spectator bar ----------
+export function showSpectate(aliveCount){
+  if(!spectate) return;
+  specAlive.textContent = String(aliveCount);
+  spectate.classList.remove('hidden');
+}
+
+export function updateSpectate(aliveCount){
+  if(!spectate || spectate.classList.contains('hidden')) return;
+  specAlive.textContent = String(aliveCount);
+}
+
+export function hideSpectate(){
+  if(spectate) spectate.classList.add('hidden');
+}
+
+// ---------- pre-match countdown ----------
+// The overlay shows the color you spawned with, so the on-canvas marker and the
+// HUD passive line all agree before the first frame of real play.
+export function showPrematch(player, label){
+  const col = COLORS[player.color];
+  pmSwatch.style.color = col;
+  pmRing.style.color = col;
+  pmColor.textContent = player.color.toUpperCase();
+  pmColor.style.color = col;
+  pmPassive.textContent = PASSIVES[player.color].label;
+  prematch.classList.remove('hidden');
+  setPrematchCount(label);
+}
+
+export function setPrematchCount(text){
+  pmCount.textContent = text;
+  pmCount.classList.remove('pop');
+  pmRing.classList.remove('pop');
+  void pmCount.offsetWidth; // force reflow so the animations restart
+  pmCount.classList.add('pop');
+  pmRing.classList.add('pop');
+}
+
+export function hidePrematch(){
+  prematch.classList.add('hidden');
+}
+
+let toastTimeout=null;
+let wasDashReady = true; // tracks the rising edge of dash-ready for the HUD pulse
+
+export function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(()=>toastEl.classList.remove('show'), 1400);
+}
+
+export function updateHUD(game){
+  const player = game.player;
+  const hp = Math.max(0, Math.round(player.hp));
+  hpNum.textContent = hp;
+  hpFill.style.width = hp+"%";
+  hpFill.style.background = COLORS[player.color];
+  hpFill.parentElement.classList.toggle('hp-crit', hp<=CRIT_HP);
+
+  passiveStateEl.textContent = PASSIVES[player.color].label;
+  passiveStateEl.style.color = COLORS[player.color];
+
+  const dashReady = player.dashCooldown<=0 && player.hp>DASH_MIN_HP;
+  const dashMaxCd = DASH_COOLDOWN * PASSIVES[player.color].dashCdMult; // color-adjusted full cooldown
+  const dashPct = dashReady ? 100 : 100*(1 - player.dashCooldown/dashMaxCd);
+  dashFill.style.width = dashPct+"%";
+  dashStateEl.textContent = dashReady ? "READY!" : Math.ceil(player.dashCooldown*10)/10 + "s";
+  dashStateEl.classList.toggle('notready', !dashReady);
+  // retrigger the pulse animation on the rising edge of "ready"
+  if(dashReady && !wasDashReady){
+    dashStateEl.classList.remove('justready');
+    void dashStateEl.offsetWidth; // force reflow so the animation restarts
+    dashStateEl.classList.add('justready');
+  }
+  wasDashReady = dashReady;
+  dashBtn.classList.toggle('notready', !dashReady);
+
+  const remain = Math.max(0, GAME_DURATION-game.elapsed);
+  const mm = Math.floor(remain/60).toString().padStart(2,'0');
+  const ss = Math.floor(remain%60).toString().padStart(2,'0');
+  timerEl.textContent = mm+":"+ss;
+
+  aliveCountEl.textContent = game.em.actors().filter(e=>e.alive).length;
+
+  const dC = Math.sqrt(dist2(player.x,player.y,game.center.x,game.center.y));
+  if(dC > game.safeR){
+    edgeWarn.style.boxShadow = "inset 0 0 140px rgba(150,60,255,0.45)";
+  } else if(dC > game.safeR-140){
+    edgeWarn.style.boxShadow = "inset 0 0 90px rgba(150,60,255,0.18)";
+  } else {
+    edgeWarn.style.boxShadow = "inset 0 0 0px rgba(150,60,255,0)";
+  }
+}
+
+// reset the dash-ready edge tracker between rounds
+export function resetHUD(){ wasDashReady = true; }
