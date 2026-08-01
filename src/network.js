@@ -652,6 +652,10 @@ export class NetworkClient {
       stagger: myEntity.stagger,
       dashState: myEntity.dashState,
       isDashing: myEntity.isDashing,
+      // Color is server-owned: it changes when the server resolves a box pickup.
+      // Without carrying it here the local blob keeps its spawn color forever
+      // while everyone else sees the new one.
+      color: myEntity.color,
       tick
     };
 
@@ -751,6 +755,13 @@ export class NetworkClient {
     localPlayer.hp = this.lastServerPosition.hp;
     localPlayer.dashState = this.lastServerPosition.dashState;
     localPlayer.isDashing = this.lastServerPosition.isDashing;
+    // The server decides what color you are — it owns box-pickup resolution, and
+    // color drives the rock-paper-scissors matchup, damage and passives. Nothing
+    // sets this locally, so without it the local blob renders its spawn color for
+    // the whole match while every other client already sees the real one.
+    if (this.lastServerPosition.color) {
+      localPlayer.color = this.lastServerPosition.color;
+    }
     // Stagger is server-owned (nothing sets it locally in online play), and the
     // prediction step reads it to scale acceleration.
     if (this.lastServerPosition.stagger !== undefined) {
