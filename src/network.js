@@ -10,11 +10,9 @@
 // It must be wss://, not ws://: the embedded page is served over https and browsers
 // block plaintext sockets from a secure page as mixed content.
 //
-// >>> CHANGE THIS before uploading to CrazyGames. Copy the hostname Render shows
-// >>> on your service page and keep the wss:// scheme, e.g.
-// >>>   wss://chroma-royale.onrender.com
-// Online play fails for every player until this points at the real server.
-const PRODUCTION_SERVER_URL = 'wss://CHANGE-ME.onrender.com';
+// Points at the Render service. If you rename the service or move hosts, update
+// this — online play fails for every player until it matches the real server.
+const PRODUCTION_SERVER_URL = 'wss://chroma-royale.onrender.com';
 
 // Hosts that really do serve the game and the socket off the same origin — the dev
 // server in server/index.js does exactly that. Anything not in this list is assumed
