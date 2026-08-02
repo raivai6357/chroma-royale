@@ -47,14 +47,13 @@ export function resolveCombat(game, a, b){
   let landedHit = false;
   // a dashing winner "smashes" — bonus damage, bonus knockback, hitstop + shake
   const dashSmash = winner.dashState === DASH_STATE.ACTIVE;
-  
-  // Check for stagger (stunned entities can't attack properly)
+
+  // A staggered attacker lands nothing: no damage, no crit.
   const attackerStaggered = winner.stagger > 0;
-  
-  // Base damage calculation
+
   let dmgAdv = Math.round(HIT_DMG_ADV * (dashSmash ? DASH_DMG_MULT : 1) * PASSIVES[winner.color].dmgMult);
   const dmgDisadv = Math.round(HIT_DMG_DISADV * PASSIVES[loser.color].dmgMult);
-  
+
   // Combo system: damage increases with consecutive hits
   let comboMult = 1;
   if (winner.comboTimer > 0 && winner.combo < MAX_COMBO) {
@@ -67,11 +66,9 @@ export function resolveCombat(game, a, b){
     winner.combo = 1;
   }
   winner.comboTimer = COMBO_WINDOW;
-  
-  // Apply combo multiplier
+
   dmgAdv = Math.round(dmgAdv * comboMult);
-  
-  // Critical hit check
+
   let isCrit = false;
   if (Math.random() < CRIT_CHANCE && !attackerStaggered) {
     isCrit = true;
@@ -79,17 +76,16 @@ export function resolveCombat(game, a, b){
     winner.lastCrit = 0.3; // flash indicator
     playCritHit();
   }
-  
+
   const knockMult = dashSmash ? DASH_KNOCK_MULT : 1;
-  
-  // HP-based knockback scaling (lighter targets fly further)
+
+  // Lighter (more hurt) targets fly further, so finishing blows read as decisive.
   const loserHpMult = 1 + (100 - loser.hp) * KNOCKBACK_SCALING;
-  
+
   if(loser.iframes<=0 && !attackerStaggered){
     applyHit(game, loser, winner, dmgAdv, true, isCrit);
     landedHit = true;
-    
-    // Apply stagger if damage threshold met
+
     if (dmgAdv >= STAGGER_THRESHOLD || dashSmash) {
       loser.stagger = STAGGER_DURATION;
       playStaggerHit();
@@ -99,7 +95,6 @@ export function resolveCombat(game, a, b){
     applyHit(game, winner, loser, dmgDisadv, false, false);
   }
 
-  // Emit hit event
   if (game.events) {
     game.events.emit(EventType.HIT, {
       attackerId: winner.id,
@@ -120,10 +115,10 @@ export function resolveCombat(game, a, b){
     winner.vx = -nx*away*HIT_KNOCK_ATTACKER; 
     winner.vy = -ny*away*HIT_KNOCK_ATTACKER;
     
-    // Hitstop based on damage
+    // Bigger hits freeze the world for longer — the main "weight" cue.
     const hitstop = isCrit ? HITSTOP_HEAVY : (dashSmash ? DASH_HIT_FREEZE : HITSTOP_LIGHT);
     game.hitFreeze = Math.max(game.hitFreeze, hitstop);
-    
+
     if(dashSmash){
       // the dash connected — end it and sell the impact
       winner.dashState = DASH_STATE.RECOVERY;
@@ -133,23 +128,21 @@ export function resolveCombat(game, a, b){
         game.cameraShake = Math.max(game.cameraShake, DASH_IMPACT_SHAKE * (isCrit ? 1.5 : 1));
         playImpact();
       }
-      // Enhanced shockwave for crit
       game.shockwaves.push({
-        x:loser.x, y:loser.y, 
-        r:0, life: isCrit ? 0.5 : 0.3, max: isCrit ? 0.5 : 0.3, 
+        x:loser.x, y:loser.y,
+        r:0, life: isCrit ? 0.5 : 0.3, max: isCrit ? 0.5 : 0.3,
         color: winner.color,
         isCrit
       });
       game.flashes.push({x:loser.x, y:loser.y, r: isCrit ? 60 : 40, life:0.08, max:0.08});
     } else if (isCrit) {
-      // Crit without dash - still add some flair
+      // Crit without a dash gets a smaller version of the same feedback.
       game.cameraShake = Math.max(game.cameraShake, 8);
       game.shockwaves.push({
         x:loser.x, y:loser.y, r:0, life:0.3, max:0.3, color:winner.color, isCrit:true
       });
     }
-    
-    // Spawn enhanced particles for crit
+
     if (isCrit) {
       spawnCritSpark(game, (winner.x + loser.x)/2, (winner.y + loser.y)/2, COLORS[winner.color]);
     }
@@ -170,14 +163,12 @@ export function applyHit(game, target, attacker, dmg, attackerHasAdvantage, isCr
   target.emHit = 0.55; // eye flinches — hurt/shocked
   if(attackerHasAdvantage) attacker.emAttack = Math.max(attacker.emAttack, 0.5); // eye snarls
   
-  // Enhanced spark for crits
   if (isCrit) {
     spawnCritSpark(game, (target.x+attacker.x)/2, (target.y+attacker.y)/2, COLORS[target.color]);
   } else {
     spawnSpark(game, (target.x+attacker.x)/2, (target.y+attacker.y)/2, COLORS[target.color]);
   }
-  
-  // Damage text with crit indicator
+
   const critText = isCrit ? "CRIT!" : "";
   game.dmgTexts.push({
     x:target.x, y:target.y-target.radius-4, 
@@ -201,8 +192,7 @@ export function applyHit(game, target, attacker, dmg, attackerHasAdvantage, isCr
     target.vx = (dx/d)*DEATH_KNOCK_TARGET; target.vy = (dy/d)*DEATH_KNOCK_TARGET;
     attacker.vx = -(dx/d)*DEATH_KNOCK_ATTACKER; attacker.vy = -(dy/d)*DEATH_KNOCK_ATTACKER;
     spawnBurst(game, target.x, target.y, COLORS[target.color]);
-    
-    // Emit kill event
+
     if (game.events) {
       game.events.emit(EventType.KILL, {
         killerId: attacker.id,
@@ -215,7 +205,6 @@ export function applyHit(game, target, attacker, dmg, attackerHasAdvantage, isCr
     if(target.isPlayer) game.toast("ELIMINATED BY " + attacker.name);
     else if(attacker.isPlayer) {
       game.toast("ELIMINATED " + target.name);
-      // Show combo count if significant
       if (attacker.combo > 1) {
         game.toast(attacker.combo + "x COMBO!");
       }
@@ -239,9 +228,8 @@ export function spawnSpark(game, x, y, color){
   }
 }
 
-// Enhanced spark for critical hits
+// Louder version of spawnSpark: more, bigger, longer-lived particles.
 export function spawnCritSpark(game, x, y, color){
-  // More particles, bigger, longer lasting
   for(let i=0;i<12;i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(100,280);
@@ -251,7 +239,7 @@ export function spawnCritSpark(game, x, y, color){
       size: rand(3,6)
     });
   }
-  // Add white flash particles
+  // A few white ones on top to read as a flash rather than just more colour.
   for(let i=0;i<6;i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(50,150);

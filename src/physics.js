@@ -58,16 +58,15 @@ export function updateDashState(game, e, dt) {
   switch (e.dashState) {
     case DASH_STATE.WINDUP:
       e.dashStateTimer -= dt;
-      // Slow down during windup (charging)
+      // Bleed speed while charging, so the lunge starts from near-stationary.
       e.vx *= Math.exp(-DRAG * 2 * dt);
       e.vy *= Math.exp(-DRAG * 2 * dt);
-      
+
       if (e.dashStateTimer <= 0) {
-        // Transition to ACTIVE
         enterDashActive(game, e);
       }
       break;
-      
+
     case DASH_STATE.ACTIVE:
       // Travel at constant high speed on locked heading
       e.facingX = e.dashDirX;
@@ -76,58 +75,49 @@ export function updateDashState(game, e, dt) {
       e.vy = e.dashDirY * DASH_SPEED;
       e.x += e.vx * dt;
       e.y += e.vy * dt;
-      
-      // Drop afterimage ghosts
+
       game.dashGhosts.push({
         x: e.x, y: e.y, color: e.color, radius: e.radius,
         life: 0.25, max: 0.25, phase: e.blobPhase, seed: e.blobSeed
       });
-      
+
       e.dashTime -= dt;
       if (e.dashTime <= 0) {
-        // Transition to RECOVERY
         enterDashRecovery(game, e);
       }
       break;
-      
+
     case DASH_STATE.RECOVERY:
       e.dashStateTimer -= dt;
-      // Apply normal physics during recovery
       const dragF = Math.exp(-DRAG * dt);
       e.vx *= dragF;
       e.vy *= dragF;
       e.x += e.vx * dt;
       e.y += e.vy * dt;
-      
+
       if (e.dashStateTimer <= 0) {
-        // Transition back to READY
         enterDashReady(game, e);
       }
       break;
-      
+
     case DASH_STATE.READY:
     default:
       // Cooldown ticking handled elsewhere
       break;
   }
   
-  // Update common timers
   if (e.dashCooldown > 0) e.dashCooldown = Math.max(0, e.dashCooldown - dt);
   if (e.dashFlash > 0) e.dashFlash -= dt;
   if (e.iframes > 0) e.iframes = Math.max(0, e.iframes - dt);
-  
-  // Update stagger
   if (e.stagger > 0) e.stagger = Math.max(0, e.stagger - dt);
-  
-  // Update combo timer
+
   if (e.comboTimer > 0) {
     e.comboTimer -= dt;
     if (e.comboTimer <= 0) {
       e.combo = 0; // reset combo when window expires
     }
   }
-  
-  // Update lastCrit flash
+
   if (e.lastCrit > 0) e.lastCrit -= dt;
 }
 
@@ -219,21 +209,19 @@ function enterDashReady(game, e) {
 
 // Apply movement with acceleration and drag
 export function applyMovement(game, e, dirX, dirY, dt, boosted) {
-  // If in active dash state, dash system handles movement
+  // updateDashState owns movement while a dash is winding up or travelling.
   if (e.dashState === DASH_STATE.ACTIVE) {
-    // Dash is handled by updateDashState
     return;
   }
-  
-  // Windup state: minimal movement (handled by updateDashState drag)
+
   if (e.dashState === DASH_STATE.WINDUP) {
     return;
   }
-  
+
   // Staggered entities have reduced control. Shared with the server via
   // utils.js/constants.js so prediction and simulation can't drift.
   const staggerMult = e.stagger > 0 ? STAGGER_ACCEL_MULT : 1;
-  
+
   const speedMult = PASSIVES[e.color].speedMult;
   if (dirX || dirY) {
     const accel = ACCEL * (boosted ? BOOST_ACCEL_MULT : 1) * speedMult * staggerMult;
@@ -242,12 +230,11 @@ export function applyMovement(game, e, dirX, dirY, dt, boosted) {
     e.facingX = dirX;
     e.facingY = dirY;
   }
-  
-  // Drag / friction
+
   const dragF = Math.exp(-DRAG * dt);
   e.vx *= dragF;
   e.vy *= dragF;
-  
+
   const maxSpd = MAX_SPEED * (boosted ? BOOST_MULT : 1) * speedMult;
   const spd = Math.hypot(e.vx, e.vy);
   if (spd > maxSpd) {
@@ -255,27 +242,23 @@ export function applyMovement(game, e, dirX, dirY, dt, boosted) {
     e.vx *= s;
     e.vy *= s;
   }
-  
+
   e.x += e.vx * dt;
   e.y += e.vy * dt;
-  
-  // Ready pulse decay
+
   const wasCooling = e.dashCooldown > 0;
   if (wasCooling && e.dashCooldown <= 0 && e.hp > DASH_MIN_HP) {
     e.readyPulse = 0.4;
   }
   if (e.readyPulse > 0) e.readyPulse -= dt;
-  
-  // Update movement trail
+
   updateTrail(e, dt);
 }
 
-// Update the movement trail for an entity
 export function updateTrail(e, dt) {
-  // Add new trail point if moving fast enough
   const spd = Math.hypot(e.vx, e.vy);
   e.trailTimer -= dt;
-  
+
   if (spd > 50 && e.trailTimer <= 0) {
     e.trail.push({
       x: e.x,
@@ -284,7 +267,7 @@ export function updateTrail(e, dt) {
       radius: e.radius * 0.6
     });
     e.trailTimer = 0.03; // add point every 30ms
-    
+
     // Keep trail length limited
     if (e.trail.length > TRAIL_LENGTH) {
       e.trail.shift();
@@ -307,22 +290,22 @@ export function updatePlayer(game, e, dt) {
   const dy = input.mouseCanvas.y - e.y;
   const d = Math.sqrt(dx * dx + dy * dy);
   const canBoost = input.boosting && e.hp > CRIT_HP;
-  
-  // Track boost state changes for events
+
+  // Edge-triggered: only fire on the transition, not every frame held.
   if (canBoost && !e.boosting && game.events) {
     game.events.emit(EventType.BOOST_START, { entityId: e.id });
   } else if (!canBoost && e.boosting && game.events) {
     game.events.emit(EventType.BOOST_END, { entityId: e.id });
   }
-  
+
   e.boosting = canBoost;
+  // Dead zone: don't jitter when the cursor is basically on top of the blob.
   const dirX = d > 4 ? dx / d : 0;
   const dirY = d > 4 ? dy / d : 0;
   applyMovement(game, e, dirX, dirY, dt, canBoost);
-  
+
   if (canBoost) e.hp = clamp(e.hp - BOOST_DRAIN * dt, 0, 100);
-  
-  // Emit move event for network sync
+
   if (game.events && (dirX || dirY)) {
     game.events.emit(EventType.MOVE, {
       entityId: e.id,
@@ -338,17 +321,17 @@ export function updateBot(game, e, dt) {
   const entities = game.em.actors();
   const boxes = game.em.boxes();
   const center = game.center, safeR = game.safeR;
-  
-  // Get AI difficulty settings
+
   const ai = AI_DIFFICULTY[e.difficulty || 'medium'];
-  
-  // Update reaction timer (simulates delayed responses for easier bots)
+
+  // Weaker bots sit out a few frames before reacting, which is what makes them
+  // feel beatable rather than just slower.
   if (e.reactionTimer > 0) {
     e.reactionTimer -= dt;
-    return; // Skip AI decision during reaction time
+    return;
   }
-  
-  // Determine safe-zone pull
+
+  // Getting back inside the zone outranks any fight or pickup.
   const dToCenter = Math.sqrt(dist2(e.x, e.y, center.x, center.y));
   let targetX = null, targetY = null;
   let wantBoost = false;

@@ -85,7 +85,6 @@ class Room {
       this.broadcast({ type: 'host_changed', hostId: this.hostId });
     }
 
-    // Update other players
     this.broadcast({
       type: 'player_left',
       playerId: playerId,
@@ -151,7 +150,8 @@ class Room {
     const player = this.players.get(playerId);
     if (!player) return;
     
-    // Store input for server authority
+    // Latest input wins; the sim reads this on its next tick rather than
+    // queueing, so a flood of packets can't buy a player extra actions.
     player.input = {
       dirX: input.dirX || 0,
       dirY: input.dirY || 0,
@@ -188,7 +188,6 @@ class Room {
     
     console.log(`Room ${this.id} starting game`);
     
-    // Initialize physics simulation
     this.physics = new ServerPhysics(this);
     this.state = 'playing';
     this.tick = 0;
@@ -196,7 +195,6 @@ class Room {
     this.snapshotHistory = [];
     this._lastEventTick = 0;
 
-    // Notify all players
     this.broadcast({
       type: 'game_start',
       tick: 0,
@@ -214,19 +212,17 @@ class Room {
     this.tick++;
     this.elapsed += dt;
     
-    // Run physics simulation
     this.physics.update(dt);
-    
-    // Create and store snapshot
+
+    // Snapshot every tick — clients reconcile against a specific past tick, so
+    // the history has to be dense even though we only transmit at SNAPSHOT_RATE.
     const snapshot = this.physics.createSnapshot(this.tick);
     this.snapshotHistory.push(snapshot);
-    
-    // Limit history size
+
     if (this.snapshotHistory.length > this.maxSnapshotHistory) {
       this.snapshotHistory.shift();
     }
-    
-    // Send snapshots at configured rate
+
     if (this.tick % (TICK_RATE / SNAPSHOT_RATE) === 0) {
       this.sendSnapshots();
     }
@@ -392,7 +388,6 @@ class Room {
         this._lastEventTick = 0;
         this.tick = 0;
         this.elapsed = 0;
-        // Reset ready state
         for (const [id, player] of this.players) {
           player.state.ready = false;
         }
@@ -405,7 +400,8 @@ class Room {
   }
   
   getSnapshotForReconciliation(playerId, clientTick) {
-    // Find snapshot closest to client's tick for reconciliation
+    // Exact tick if we still have it; otherwise the client is further behind
+    // than our history goes, so reconcile against the newest state instead.
     return this.snapshotHistory.find(s => s.tick === clientTick) ||
            this.snapshotHistory[this.snapshotHistory.length - 1];
   }

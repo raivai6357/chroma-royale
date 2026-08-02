@@ -135,30 +135,19 @@ class ServerPhysics {
     return positions;
   }
   
+  // Order matters: the zone moves before inputs are read, so a player's
+  // movement this tick is judged against the zone they'll actually be in.
   update(dt) {
     this.tick++;
     this.elapsed += dt;
     this.events = [];
-    
-    // Update zone
+
     this._updateZone(dt);
-    
-    // Process player inputs
     this._processInputs(dt);
-    
-    // Update physics
     this._updatePhysics(dt);
-    
-    // Check collisions
     this._checkCollisions();
-    
-    // Update boxes/pickups
     this._updateBoxes(dt);
-    
-    // Respawn boxes
     this._respawnBoxes();
-    
-    // Update timers
     this._updateTimers(dt);
   }
   
@@ -194,28 +183,25 @@ class ServerPhysics {
       const entity = this._getEntityByPlayerId(playerId);
       if (!entity || !entity.alive) continue;
       
-      // Skip if dashing
+      // A dash is committed: input can't steer or cancel it mid-flight.
       if (entity.dashState === DASH_STATE.ACTIVE || entity.dashState === DASH_STATE.WINDUP) continue;
-      
+
       const input = player.input;
       const dirX = input.dirX || 0;
       const dirY = input.dirY || 0;
       const canBoost = input.boosting && entity.hp > CRIT_HP;
       
       entity.boosting = canBoost;
-      
-      // Apply movement
+
       this._applyMovement(entity, dirX, dirY, dt, canBoost);
-      
-      // Boost drain
+
       if (canBoost) {
         entity.hp = clamp(entity.hp - BOOST_DRAIN * dt, 0, 100);
       }
-      
-      // Handle dash input
+
       if (input.dash && this._canDash(entity)) {
         this._requestDash(entity, dirX || entity.facingX, dirY || entity.facingY);
-        player.input.dash = false; // Consume dash input
+        player.input.dash = false; // one dash per press, not per tick held
       }
     }
   }
@@ -293,26 +279,23 @@ class ServerPhysics {
         continue;
       }
       
-      // Update dash state machine
       this._updateDashState(e, dt);
-      
-      // Apply radius changes
+
+      // Ease toward the HP-derived size so damage doesn't pop the blob.
       const targetR = radiusForHp(e.hp);
       e.radius += (targetR - e.radius) * Math.min(1, 10 * dt);
-      
-      // Wall bounce
+
+      // Walls absorb most of the impact rather than reflecting cleanly.
       if (e.x < e.radius || e.x > WORLD_W - e.radius) e.vx *= -0.3;
       if (e.y < e.radius || e.y > WORLD_H - e.radius) e.vy *= -0.3;
       e.x = clamp(e.x, e.radius, WORLD_W - e.radius);
       e.y = clamp(e.y, e.radius, WORLD_H - e.radius);
       
-      // Zone damage
       const dToCenter = Math.sqrt(dist2(e.x, e.y, this.center.x, this.center.y));
       if (dToCenter > this.safeR) {
         e.hp -= DARK_DRAIN * dt;
       }
-      
-      // Death check
+
       if (e.hp <= 0 && e.alive) {
         e.alive = false;
         e.deathT = 0.5;
@@ -449,7 +432,7 @@ class ServerPhysics {
         loser.stagger = STAGGER_DURATION;
       }
       
-      // Track stats
+      // Bots have no playerId, so only real players accumulate stats.
       if (winner.playerId) {
         const stats = this.stats.get(winner.playerId);
         if (stats) stats.damageDealt += dmgAdv;
@@ -459,7 +442,6 @@ class ServerPhysics {
         if (stats) stats.damageTaken += dmgAdv;
       }
       
-      // Lifesteal
       const heal = Math.round(dmgAdv * HIT_LIFESTEAL_RATIO);
       winner.hp = clamp(winner.hp + heal, 0, 100);
       
@@ -483,7 +465,6 @@ class ServerPhysics {
     winner.vx = -nx * away * HIT_KNOCK_ATTACKER;
     winner.vy = -ny * away * HIT_KNOCK_ATTACKER;
     
-    // Check death
     if (loser.hp <= 0 && loser.alive) {
       loser.alive = false;
       loser.deathT = 0.5;

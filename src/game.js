@@ -21,12 +21,11 @@ const SPAWN_MARK_TIME = 2.2;    // seconds the "YOU" spawn marker lingers after 
 
 export class Game {
   constructor(){
-    // AI difficulty setting for practice mode
     this.aiDifficulty = 'medium'; // 'easy' | 'medium' | 'hard'
-    
+
     // one source of truth: all mutable round state lives on the instance
     this.em = new EntityManager();
-    this.events = new EventBus();          // Event system for decoupled architecture
+    this.events = new EventBus();
     this.particles = [];
     this.dmgTexts = [];
     this.dashGhosts = [];   // fading afterimages left behind while dashing
@@ -59,7 +58,6 @@ export class Game {
     this.toast = toast; // combat/pickup code calls game.toast(...)
     this._step = this.step.bind(this);
     
-    // Subscribe to events for visual/audio feedback
     this._setupEventHandlers();
 
     resize();
@@ -67,11 +65,11 @@ export class Game {
     setupInput(getCanvas());
   }
 
-  // Register event handlers for feedback systems (particles, sound, UI, camera)
+  // Wires every event to its particle/sound/UI/camera feedback. The sim itself
+  // never touches these — feedback is purely a subscriber, so muting or
+  // removing a handler can't change how a round plays out.
   _setupEventHandlers() {
-    // Dash windup — show charge-up effect
     this.events.on(EventType.DASH_WINDUP, (data) => {
-      // Small particles during windup
       const e = this.em.entities.find(e => e.id === data.entityId);
       if (e) {
         for (let i = 0; i < 5; i++) {
@@ -89,7 +87,6 @@ export class Game {
       }
     });
     
-    // Damage event — spawn damage text and particles
     this.events.on(EventType.DAMAGE, (data) => {
       this.dmgTexts.push({
         x: data.x, y: data.y - 20,
@@ -99,12 +96,10 @@ export class Game {
       });
     });
     
-    // Kill event — spawn death burst
     this.events.on(EventType.KILL, (data) => {
       spawnBurst(this, data.x, data.y, COLORS[data.color]);
     });
     
-    // Pickup collect — color change particles
     this.events.on(EventType.PICKUP_COLLECT, (data) => {
       for (let i = 0; i < 8; i++) {
         const ang = rand(0, Math.PI * 2);
@@ -162,7 +157,6 @@ export class Game {
     }
     for(let i=0;i<BOX_COUNT;i++) this.em.add(makeBox());
     
-    // Emit game start event
     this.events.emit(EventType.ROUND_RESET, {});
   }
 
@@ -182,10 +176,9 @@ export class Game {
         continue;
       }
       
-      // Update dash state machine first
+      // Dash state runs first: applyMovement bails out mid-dash, so the state
+      // machine has to be the thing that decides whether it's still dashing.
       updateDashState(this, e, dt);
-      
-      // Then update player/bot movement (skipped if dashing)
       if(e.isPlayer) updatePlayer(this, e, dt); else updateBot(this, e, dt);
 
       // body grows/shrinks toward its HP-based target size (eased so it's smooth)
@@ -197,7 +190,6 @@ export class Game {
       e.x = clamp(e.x, e.radius, WORLD_W-e.radius);
       e.y = clamp(e.y, e.radius, WORLD_H-e.radius);
 
-      // darkness damage - use enhanced zone damage system
       applyZoneDamage(this, e, dt);
       if(e.hitFlash>0) e.hitFlash -= dt;
 
@@ -321,7 +313,6 @@ export class Game {
     return true;
   }
 
-  // Single fixed-step simulation update
   fixedUpdate(dt) {
     // pre-match countdown owns the frame until it hits GO
     if(this.updateCountdown(dt)) return;
@@ -339,17 +330,10 @@ export class Game {
 
     this.elapsed += dt;
 
-    // ZoneSystem — shrink the safe zone
     updateZone(this, dt);
-
-    // MovementSystem — intent, physics, walls, void damage, timers
     this.movementSystem(dt);
-
-    // PickupSystem then SpawnSystem — box pickups, then refill
     this.pickupSystem();
     this.spawnSystem();
-
-    // CombatSystem — resolve overlaps
     this.combatSystem();
 
     // fx update
@@ -383,20 +367,18 @@ export class Game {
   step(t){
     if(!this.running || this.paused) return;
     
-    // Calculate frame delta, capped to avoid spiral of death
+    // Cap the delta: a long stall (tab backgrounded, breakpoint) would otherwise
+    // queue up hundreds of fixed steps and spiral into an unrecoverable backlog.
     const frameDt = Math.min(MAX_FRAME_DT, (t - this.lastT) / 1000 || 0);
     this.lastT = t;
-    
-    // Accumulate time and run fixed-step updates
+
     this.accumulator += frameDt;
-    
-    // Run simulation at fixed 60Hz rate
     while (this.accumulator >= FIXED_DT) {
       this.fixedUpdate(FIXED_DT);
       this.accumulator -= FIXED_DT;
     }
 
-    // Render at display refresh rate
+    // Render runs once per frame at display rate, decoupled from the sim above.
     render(this);
     updateHUD(this);
 
@@ -421,7 +403,6 @@ export class Game {
     this.animId = requestAnimationFrame(this._step);
   }
 
-  // Set AI difficulty for practice mode
   setDifficulty(difficulty) {
     if (['easy', 'medium', 'hard'].includes(difficulty)) {
       this.aiDifficulty = difficulty;
