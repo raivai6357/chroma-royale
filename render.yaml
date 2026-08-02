@@ -5,7 +5,6 @@ services:
     name: chroma-royale
     runtime: node
     plan: free
-    region: singapore
 
     # package.json lives in server/, not the repo root, so Render's Node
     # autodetect needs pointing at it. The client files (index.html, src/) stay
