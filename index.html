@@ -116,6 +116,46 @@
   .htp-scroll::-webkit-scrollbar-thumb{background:#3a3556;border-radius:999px;}
   .htp-sec{padding:18px 0;border-bottom:1px dashed #201b35;}
   .htp-sec:last-of-type{border-bottom:none;}
+
+  /* ---- Quick-reference layout ----
+     The guide is meant to be skimmed, not read. Everything below favours a
+     visual the player can decode at a glance over a sentence explaining it. */
+
+  /* Goal strip: three big numbers, no prose. */
+  .htp-facts{display:flex;flex-wrap:wrap;gap:10px;}
+  .htp-fact{
+    flex:1 1 100px;background:#15112a;border:1px solid #241e3d;border-radius:10px;
+    padding:12px 14px;text-align:center;
+  }
+  .htp-fact b{display:block;font-size:22px;line-height:1.1;color:var(--cyan);font-weight:800;}
+  .htp-fact span{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#6f6890;margin-top:5px;}
+
+  /* Colour cycle as an actual triangle of chips rather than three text rows. */
+  .htp-tri{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+  .htp-chip{
+    display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;
+    background:#15112a;border:1px solid #241e3d;font-size:12px;letter-spacing:1.5px;font-weight:700;
+  }
+  .htp-beat{color:#4b4768;font-size:15px;font-weight:700;}
+  .htp-perk{font-size:10.5px;letter-spacing:.5px;color:#6f6890;font-weight:400;margin-left:2px;}
+
+  /* Keycaps — a player recognises a key shape faster than the word for it. */
+  .htp-keys{display:flex;flex-direction:column;gap:8px;}
+  .htp-key{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#b9b2d4;}
+  .htp-cap{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:30px;height:26px;padding:0 9px;flex:none;
+    background:#1c1733;border:1px solid #352f52;border-bottom-width:2px;border-radius:6px;
+    font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--paper);
+  }
+  .htp-or{color:#4b4768;font-size:10.5px;flex:none;}
+  .htp-cost{margin-left:auto;font-size:11px;color:#6f6890;white-space:nowrap;}
+
+  /* One-line rules: a coloured dot, a bolded verdict, nothing else. */
+  .htp-bullets{display:flex;flex-direction:column;gap:9px;}
+  .htp-bullet{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.5;color:#9a93b8;}
+  .htp-bullet b{color:var(--paper);font-weight:700;}
+  .htp-dot{width:7px;height:7px;border-radius:50%;flex:none;margin-top:6px;background:var(--cyan);}
   .htp-eyebrow{
     font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#5b5480;margin-bottom:4px;
   }
@@ -192,6 +232,13 @@
     .htp-two > div,.htp-card,.htp-state{flex:1 1 100%;}
     .htp-states{flex-direction:column;gap:6px;}
     .htp-cycwrap{gap:10px 0;flex-direction:column;}
+    .htp-fact b{font-size:20px;}
+    .htp-bullet{font-size:13.5px;}
+    .htp-key{font-size:13.5px;}
+    .htp-cost{font-size:12px;}
+    /* Stack the cost under the keycap instead of letting it wrap mid-row. */
+    .htp-key{flex-wrap:wrap;}
+    .htp-cost{margin-left:0;flex-basis:100%;padding-left:40px;}
     .htp-foot{
       position:sticky;bottom:0;background:rgba(5,6,10,0.97);
       padding:10px 14px 14px;gap:10px;
