@@ -95,8 +95,6 @@ export const AI_DIFFICULTY = {
 };
 
 // ---------- movement polish ----------
-export const ACCEL_CURVE = 0.85;       // non-linear acceleration factor (0-1, higher = snappier)
-export const TURN_SPEED = 8;           // how fast you can change direction (radians/sec)
 export const TRAIL_LENGTH = 12;        // number of trail segments
 export const TRAIL_LIFETIME = 0.4;     // seconds before trail fades
 export const HITSTOP_LIGHT = 0.03;     // hitstop on light hits

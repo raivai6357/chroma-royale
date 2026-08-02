@@ -6,19 +6,6 @@ import {
 } from './utils.js';
 import { EventType } from './events.js';
 
-// The arena is a fixed 800x600 rectangle with a shrinking circular safe zone.
-export function makeWorld(){
-  return {
-    center: { x: WORLD_W/2, y: WORLD_H/2 },
-    safeR: SAFE_R0,
-    zoneWarningPlayed: false,  // track if warning sound was played this phase
-    zonePhase: 'idle',         // 'idle' | 'warning' | 'shrinking' | 'final'
-    nextShrinkTime: SHRINK_START,
-    shrinkPulse: 0,            // for visual pulsing during warning
-    zoneRoamT: 0               // seconds the fully-shrunk zone has been wandering
-  };
-}
-
 // ZoneSystem — advance the safe radius as the round progresses.
 // Enhanced with warning phases, sound effects, and faster final circle.
 export function updateZone(game, dt){

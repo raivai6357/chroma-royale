@@ -1,5 +1,4 @@
 import { WORLD_W, WORLD_H } from './utils.js';
-import { DashCommand, BoostCommand } from './events.js';
 
 // The input intent object — systems read this rather than input mutating entities
 // directly. `dashQueued` is a one-shot flag the game consumes each step and clears,
@@ -9,23 +8,6 @@ export const input = {
   boosting: false,
   dashQueued: false
 };
-
-// Command generator for multiplayer sync.
-// When a game instance is provided, input actions also queue commands.
-let _gameRef = null;
-export function setInputGame(game) {
-  _gameRef = game;
-}
-
-// Generate a dash command from current input state
-export function createDashCommand(entityId, tick, facingX, facingY) {
-  return new DashCommand(entityId, tick, facingX, facingY);
-}
-
-// Generate a boost command from current input state
-export function createBoostCommand(entityId, tick, active) {
-  return new BoostCommand(entityId, tick, active);
-}
 
 // consume the queued dash (returns true once per press, then resets)
 export function consumeDash(){

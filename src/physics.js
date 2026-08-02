@@ -215,27 +215,6 @@ function enterDashReady(game, e) {
   }
 }
 
-// Cancel dash (e.g., hit during windup)
-export function cancelDash(game, e) {
-  if (e.dashState === DASH_STATE.WINDUP || e.dashState === DASH_STATE.ACTIVE) {
-    e.dashState = DASH_STATE.READY;
-    e.isDashing = false;
-    e.dashStateTimer = 0;
-    
-    if (game.events) {
-      game.events.emit(EventType.DASH_CANCEL, {
-        entityId: e.id,
-        x: e.x, y: e.y
-      });
-    }
-  }
-}
-
-// Legacy wrapper for backward compatibility
-export function tryDash(game, e) {
-  return requestDash(game, e, e.facingX, e.facingY);
-}
-
 // ---------- Movement Physics ----------
 
 // Apply movement with acceleration and drag

@@ -4,7 +4,7 @@ import {
   ensureAudio, getAudioCtx, FIXED_DT, MAX_FRAME_DT, playCountdownTick
 } from './utils.js';
 import { EntityManager, makeEntity, makeBox } from './entities.js';
-import { EventBus, EventType, CommandQueue, DashCommand, MoveCommand, BoostCommand } from './events.js';
+import { EventBus, EventType } from './events.js';
 import { updateZone, applyZoneDamage } from './world.js';
 import { applyMovement, updatePlayer, updateBot, requestDash, updateDashState, canDash } from './physics.js';
 import { resolveCombat, spawnBurst } from './combat.js';
@@ -27,7 +27,6 @@ export class Game {
     // one source of truth: all mutable round state lives on the instance
     this.em = new EntityManager();
     this.events = new EventBus();          // Event system for decoupled architecture
-    this.commands = new CommandQueue();    // Command buffer for network sync
     this.particles = [];
     this.dmgTexts = [];
     this.dashGhosts = [];   // fading afterimages left behind while dashing
@@ -121,7 +120,6 @@ export class Game {
   resetGame(){
     this.em = new EntityManager();
     this.events.clear();
-    this.commands.clear();
     this._setupEventHandlers();
     this.particles = [];
     this.dmgTexts = [];
@@ -282,30 +280,6 @@ export class Game {
     }
   }
   
-  // Process pending commands (for multiplayer/recorded input)
-  processCommands(){
-    const cmds = this.commands.flush();
-    for (const cmd of cmds) {
-      const e = this.em.entities.find(e => e.id === cmd.entityId);
-      if (!e || !e.alive) continue;
-      
-      switch (cmd.type) {
-        case 'move':
-          // Move commands are handled in updatePlayer via input
-          break;
-        case 'dash':
-          if (canDash(e)) {
-            requestDash(this, e, cmd.dirX, cmd.dirY);
-          }
-          break;
-        case 'boost':
-          // Boost state is tracked on entity
-          e.boosting = cmd.active;
-          break;
-      }
-    }
-  }
-
   // Pre-match countdown — runs instead of the sim, so nothing moves, no zone
   // shrink, and the match clock stays at full. Returns true while it owns the frame.
   updateCountdown(dt){
@@ -358,9 +332,6 @@ export class Game {
       return;
     }
     
-    // Process any queued commands
-    this.processCommands();
-
     // Consume queued player dash input
     if(consumeDash() && this.player && canDash(this.player)) {
       requestDash(this, this.player, this.player.facingX, this.player.facingY);
