@@ -6,7 +6,8 @@ const {
   TICK_RATE,
   SNAPSHOT_RATE,
   INTERPOLATION_DELAY,
-  GAME_DURATION
+  GAME_DURATION,
+  SUDDEN_DEATH_TIMEOUT
 } = require('./constants.js');
 
 // Get database reference (set by index.js)
@@ -230,9 +231,20 @@ class Room {
       this.sendSnapshots();
     }
     
-    // Check game end conditions
+    // Check game end conditions.
+    //
+    // The clock does NOT end the round: if time expires with 2+ blobs alive the
+    // match continues into sudden death, where _updateZone keeps closing the
+    // circle past SAFE_R1 until only one can survive. A winner is always someone
+    // who actually outlasted the others.
+    //
+    // The absolute cap below is a safety net, not game design. Once the zone
+    // reaches 0 everyone still standing is taking escalating void damage, so a
+    // real round resolves within seconds of the clock expiring; this only fires
+    // if something is genuinely wedged, so a room can never spin forever.
     const alivePlayers = this.physics.getAlivePlayers();
-    if (alivePlayers.length <= 1 || this.elapsed >= this.settings.gameDuration) {
+    const overtime = this.elapsed - this.settings.gameDuration;
+    if (alivePlayers.length <= 1 || overtime >= SUDDEN_DEATH_TIMEOUT) {
       this.endGame(alivePlayers);
     }
   }

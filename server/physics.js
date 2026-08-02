@@ -14,7 +14,8 @@ const {
   PLAYER_R_MIN, PLAYER_R_MAX,
   BEATS, COLOR_KEYS, PASSIVES,
   CORNERS, BOX_COUNT, BOX_R,
-  SAFE_R0, SAFE_R1, SHRINK_START, GAME_DURATION
+  SAFE_R0, SAFE_R1, SHRINK_START, GAME_DURATION,
+  SUDDEN_DEATH_SHRINK, SUDDEN_DEATH_MIN_R, zoneCenterAt
 } = require('./constants.js');
 
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -73,6 +74,7 @@ class ServerPhysics {
     this.boxes = [];
     this.safeR = SAFE_R0;
     this.center = { x: WORLD_W / 2, y: WORLD_H / 2 };
+    this.zoneRoamT = 0;   // seconds the fully-shrunk zone has been wandering
     this.elapsed = 0;
     this.tick = 0;
     this.events = [];
@@ -162,12 +164,29 @@ class ServerPhysics {
   
   _updateZone(dt) {
     if (this.elapsed < SHRINK_START) return;
-    
+
     const shrinkDuration = GAME_DURATION - SHRINK_START;
     const shrinkElapsed = this.elapsed - SHRINK_START;
     const prog = clamp(shrinkElapsed / shrinkDuration, 0, 1);
-    
-    this.safeR = SAFE_R0 + (SAFE_R1 - SAFE_R0) * easeInOut(prog);
+
+    if (prog < 1) {
+      this.safeR = SAFE_R0 + (SAFE_R1 - SAFE_R0) * easeInOut(prog);
+      return;
+    }
+
+    // Fully shrunk. The clock no longer ends the round, so once it expires the
+    // zone keeps closing past SAFE_R1 — sudden death, and the thing that
+    // guarantees the match actually terminates.
+    if (this.elapsed >= GAME_DURATION) {
+      const overtime = this.elapsed - GAME_DURATION;
+      this.safeR = Math.max(SUDDEN_DEATH_MIN_R, SAFE_R1 - overtime * SUDDEN_DEATH_SHRINK);
+    } else {
+      this.safeR = SAFE_R1;
+    }
+
+    // ...and it wanders, so the endgame can't be camped from a fixed spot.
+    this.zoneRoamT += dt;
+    this.center = zoneCenterAt(this.zoneRoamT, this.safeR, WORLD_W, WORLD_H);
   }
   
   _processInputs(dt) {

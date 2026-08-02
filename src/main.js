@@ -1,9 +1,9 @@
 import { Game } from './game.js';
-import { ui } from './ui.js';
-import { showOnlineMenu, hideOnlineMenu, initOnlineUI } from './onlineUI.js';
+import { ui, showMainMenu } from './ui.js';
+import { showOnlineMenu, hideOnlineMenu, initOnlineUI, isOnlineMenuVisible } from './onlineUI.js';
 import { network } from './network.js';
 import { onlineGame } from './onlineGame.js';
-import { initHowTo, showHowTo } from './howto.js';
+import { initHowTo, showHowTo, isHowToOpen } from './howto.js';
 
 const game = new Game();
 
@@ -52,6 +52,44 @@ ui.againBtn.addEventListener('click', () => {
 ui.leaveBtn.addEventListener('click', () => {
   if (onlineGame.isActive()) onlineGame.leaveMatch();
   else game.leaveMatch();
+});
+
+// ---------- pause / main menu ----------
+// The live round owns the Escape menu, so route to whichever loop is running.
+// onlineGame.isActive() is the same test the leave button uses.
+function activeGame() {
+  if (onlineGame.isActive()) return onlineGame;
+  if (game.running) return game;
+  return null;
+}
+
+ui.resumeBtn.addEventListener('click', () => {
+  const g = activeGame();
+  if (g) g.resume();
+});
+
+ui.pauseMenuBtn.addEventListener('click', () => {
+  const g = activeGame();
+  if (g) g.quitToMenu();
+  else showMainMenu();
+});
+
+// From the end screen the round is already over — no forfeit needed, just make
+// sure a finished online round releases the room before we show the menu.
+ui.endMenuBtn.addEventListener('click', () => {
+  if (network.isInRoom()) network.leaveRoom();
+  showMainMenu();
+});
+
+// Escape toggles the in-match menu. The How-to sheet and the online lobby have
+// their own Escape behaviour and sit above the arena, so they get first refusal.
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (isHowToOpen() || isOnlineMenuVisible()) return;
+  const g = activeGame();
+  if (!g) return;
+  e.preventDefault();
+  g.togglePause();
 });
 
 document.getElementById('onlineBtn').addEventListener('click', () => {

@@ -32,11 +32,51 @@ const pmPassive = document.getElementById('pmPassive');
 const spectate = document.getElementById('spectate');
 const specAlive = document.getElementById('specAlive');
 const leaveBtn = document.getElementById('leaveBtn');
+// pause / in-match menu
+const pauseScreen = document.getElementById('pauseScreen');
+const pauseSub = document.getElementById('pauseSub');
+const pauseNote = document.getElementById('pauseNote');
+const resumeBtn = document.getElementById('resumeBtn');
+const pauseMenuBtn = document.getElementById('pauseMenuBtn');
+const endMenuBtn = document.getElementById('endMenuBtn');
 
 export const ui = {
   startScreen, endScreen, hud, startBtn, againBtn,
-  endEyebrow, endTitle, endSub, leaveBtn
+  endEyebrow, endTitle, endSub, leaveBtn,
+  resumeBtn, pauseMenuBtn, endMenuBtn
 };
+
+// ---------- pause / in-match menu ----------
+// `frozen` is false online, where the server keeps simulating regardless — the
+// copy has to say so rather than promising a pause we can't deliver.
+export function showPause(frozen){
+  if(!pauseScreen) return;
+  pauseSub.textContent = frozen
+    ? "The arena is frozen. Take your time."
+    : "The match is still running without you.";
+  pauseNote.classList.toggle('hidden', frozen);
+  pauseScreen.classList.remove('hidden');
+}
+
+export function hidePause(){
+  if(pauseScreen) pauseScreen.classList.add('hidden');
+}
+
+export function isPauseOpen(){
+  return !!pauseScreen && !pauseScreen.classList.contains('hidden');
+}
+
+// ---------- main menu ----------
+// One place that puts the shell back to its start-screen state, so every caller
+// (pause menu, end screen, forfeit) leaves the DOM in the same condition.
+export function showMainMenu(){
+  hidePause();
+  hidePrematch();
+  hideSpectate();
+  hud.classList.add('hidden');
+  endScreen.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+}
 
 // ---------- spectator bar ----------
 export function showSpectate(aliveCount){
@@ -117,10 +157,19 @@ export function updateHUD(game){
   wasDashReady = dashReady;
   dashBtn.classList.toggle('notready', !dashReady);
 
-  const remain = Math.max(0, GAME_DURATION-game.elapsed);
-  const mm = Math.floor(remain/60).toString().padStart(2,'0');
-  const ss = Math.floor(remain%60).toString().padStart(2,'0');
-  timerEl.textContent = mm+":"+ss;
+  // Past the clock the round doesn't end — it goes to sudden death and the zone
+  // keeps closing. A timer frozen at 00:00 would read as a bug, so say what's
+  // actually happening instead.
+  const remain = GAME_DURATION - game.elapsed;
+  if(remain <= 0){
+    timerEl.textContent = "SUDDEN DEATH";
+    timerEl.classList.add('sudden');
+  } else {
+    const mm = Math.floor(remain/60).toString().padStart(2,'0');
+    const ss = Math.floor(remain%60).toString().padStart(2,'0');
+    timerEl.textContent = mm+":"+ss;
+    timerEl.classList.remove('sudden');
+  }
 
   aliveCountEl.textContent = game.em.actors().filter(e=>e.alive).length;
 

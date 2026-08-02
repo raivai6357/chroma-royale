@@ -9,7 +9,7 @@ import { render } from './renderer.js';
 import { input, consumeDash } from './input.js';
 import { network } from './network.js';
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
-         showSpectate, updateSpectate, hideSpectate } from './ui.js';
+         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu } from './ui.js';
 
 // The online round is server-authoritative: the server owns combat, the zone,
 // pickups and every remote blob. This class is the *shadow* of Game — it wears
@@ -60,6 +60,7 @@ export class OnlineGame {
     this.countLabel = '';
     this.spawnMark = 0;
     this.spectating = false;
+    this.paused = false;     // Escape menu is up; round keeps running server-side
     this.accumulator = 0;
     this.tick = 0;
     this.toast = toast;
@@ -112,6 +113,8 @@ export class OnlineGame {
     this.lastSnapshotTick = -1;
     this.ended = false;
     this.stalled = false;
+    this.paused = false;
+    hidePause();
     this.em.entities = [];
     this.em.boxList = [];
     resetHUD();
@@ -170,11 +173,13 @@ export class OnlineGame {
     ui.endScreen.classList.remove('hidden');
 
     const won = data && data.winnerPlayerId && data.winnerPlayerId === this.myPlayerId;
-    // The round also ends when the clock runs out (rooms.js checks
-    // `elapsed >= gameDuration`), and then there's no sole survivor to crown.
-    // survivors[] holds ENTITY ids, which is what this.player.id is once the
-    // first snapshot resolves it — so it's the honest way to ask "did I live?"
-    // rather than assuming everyone who isn't the winner died.
+    // The clock no longer ends a round — the server plays on into sudden death
+    // until one blob is left. So this branch is no longer the common "time ran
+    // out" case; it's the rare one where the round ended with us alive but
+    // nobody crowned (the server's runaway-room safety net, or everyone left
+    // dying within the same tick). survivors[] holds ENTITY ids, which is what
+    // this.player.id is once the first snapshot resolves it, so it's the honest
+    // way to ask "did I live?" rather than assuming non-winners died.
     const myEntityId = this.player ? this.player.id : -1;
     const survived = !!(data && Array.isArray(data.survivors)
       && myEntityId >= 0 && data.survivors.includes(myEntityId));
@@ -183,11 +188,11 @@ export class OnlineGame {
       ui.endTitle.textContent = "YOU ARE THE LAST COLOR";
       ui.endSub.textContent = "Every rival has been consumed. Chroma Royale is yours.";
     } else if(survived){
-      // Time expired with more than one blob standing. Telling a player who
-      // never died that they were ELIMINATED is just wrong.
-      ui.endEyebrow.textContent = "TIME UP";
-      ui.endTitle.textContent = "STANDOFF";
-      ui.endSub.textContent = "The clock beat you both. Nobody took the arena.";
+      // Still standing, but the server didn't name a winner. Telling a player
+      // who never died that they were ELIMINATED is just wrong.
+      ui.endEyebrow.textContent = "ROUND OVER";
+      ui.endTitle.textContent = "STILL STANDING";
+      ui.endSub.textContent = "The arena closed with no single victor.";
     } else {
       const winnerName = data && data.winnerPlayerId
         ? (this.names.get(data.winnerPlayerId) || 'A RIVAL')
@@ -570,7 +575,7 @@ export class OnlineGame {
     //    first or every pending input is stamped with the same value and
     //    reconciliation can never retire one.
     network.tick();
-    const dashQueued = consumeDash();
+    const dashQueued = consumeDash() && !this.paused;
     const intent = this._buildInput(dashQueued);
     network.sendInput(intent);
 
@@ -618,6 +623,10 @@ export class OnlineGame {
   _buildInput(dashQueued){
     const p = this.player;
     if(!p) return { dirX: 0, dirY: 0, boosting: false, dash: false };
+    // Menu is up — stop steering. Zero direction is a real intent the server
+    // already understands (it's what an idle cursor produces), so the blob just
+    // coasts to a halt rather than tracking a cursor nobody is aiming.
+    if(this.paused) return { dirX: 0, dirY: 0, boosting: false, dash: false };
     const dx = this.input.mouseCanvas.x - p.x;
     const dy = this.input.mouseCanvas.y - p.y;
     const d = Math.sqrt(dx*dx + dy*dy);
@@ -792,6 +801,49 @@ export class OnlineGame {
     ui.endEyebrow.textContent = "LEFT THE ARENA";
     ui.endTitle.textContent = "ELIMINATED";
     ui.endSub.textContent = "You walked away from the arena.";
+  }
+
+  // ---------- pause ----------
+  // Online there is no pausing: the server keeps simulating and keeps expecting
+  // input, so this is an overlay over a live round, not a freeze. The loop stays
+  // running (snapshots must keep being consumed or we'd desync), but _buildInput
+  // reads `paused` and sends a neutral intent so the blob coasts to a stop
+  // instead of chasing a cursor the player isn't looking at.
+  pause(){
+    if(!this.running || this.paused) return;
+    this.paused = true;
+    this.input.boosting = false;
+    consumeDash();
+    showPause(false);
+  }
+
+  resume(){
+    if(!this.paused) return;
+    this.paused = false;
+    hidePause();
+    consumeDash();
+  }
+
+  togglePause(){
+    if(this.paused) this.resume(); else this.pause();
+  }
+
+  // Forfeit and go back to the start screen. The seat has to be given up
+  // explicitly — otherwise the server holds it open for the grace window and
+  // the room looks like it still has a live player in it.
+  quitToMenu(){
+    if(this.running) network.leaveRoom();
+    this.running = false;
+    this.paused = false;
+    this.ended = true;
+    cancelAnimationFrame(this.animId);
+    this.animId = null;
+    this.countdown = 0;
+    this.spawnMark = 0;
+    this.spectating = false;
+    this.input.boosting = false;
+    consumeDash();
+    showMainMenu();
   }
 }
 

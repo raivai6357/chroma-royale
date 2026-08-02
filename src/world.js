@@ -1,6 +1,7 @@
-import { 
+import {
   WORLD_W, WORLD_H, SAFE_R0, SAFE_R1, SHRINK_START, GAME_DURATION, clamp, easeInOut,
   ZONE_WARN_TIME, ZONE_WARN_PULSE, ZONE_FINAL_SPEED, ZONE_DAMAGE_SCALING,
+  SUDDEN_DEATH_SHRINK, SUDDEN_DEATH_MIN_R, zoneCenterAt,
   playZoneWarning
 } from './utils.js';
 import { EventType } from './events.js';
@@ -13,7 +14,8 @@ export function makeWorld(){
     zoneWarningPlayed: false,  // track if warning sound was played this phase
     zonePhase: 'idle',         // 'idle' | 'warning' | 'shrinking' | 'final'
     nextShrinkTime: SHRINK_START,
-    shrinkPulse: 0             // for visual pulsing during warning
+    shrinkPulse: 0,            // for visual pulsing during warning
+    zoneRoamT: 0               // seconds the fully-shrunk zone has been wandering
   };
 }
 
@@ -73,10 +75,18 @@ export function updateZone(game, dt){
   if (elapsed >= SHRINK_START) {
     // Calculate target radius
     let targetR;
-    
+
     if (prog >= 1) {
-      // Final phase - hold at minimum
-      targetR = SAFE_R1;
+      // Fully shrunk. Normally it holds at SAFE_R1 and roams (below), but once
+      // the clock has run out the round is in sudden death and the zone keeps
+      // closing — that's what forces a resolution instead of letting survivors
+      // circle each other indefinitely.
+      if (elapsed >= GAME_DURATION) {
+        const overtime = elapsed - GAME_DURATION;
+        targetR = Math.max(SUDDEN_DEATH_MIN_R, SAFE_R1 - overtime * SUDDEN_DEATH_SHRINK);
+      } else {
+        targetR = SAFE_R1;
+      }
     } else {
       // Normal shrink with easeInOut
       // Apply faster speed for final 30% (when less than 3 players might remain)
@@ -91,6 +101,15 @@ export function updateZone(game, dt){
     
     // Smoothly interpolate to target
     game.safeR = targetR;
+
+    // Once the zone is fully closed it stops being a fixed circle in the middle
+    // and starts wandering, so the endgame can't be camped from one spot. The
+    // path is derived from how long it has been roaming (not integrated), which
+    // keeps it identical to the server's copy in online play.
+    if (prog >= 1) {
+      game.zoneRoamT = (game.zoneRoamT || 0) + dt;
+      game.center = zoneCenterAt(game.zoneRoamT, game.safeR, WORLD_W, WORLD_H);
+    }
   } else if (elapsed >= SHRINK_START - ZONE_WARN_TIME) {
     // Warning phase - pulse the zone edge visually (handled in renderer)
     // but don't actually shrink yet

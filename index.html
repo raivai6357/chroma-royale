@@ -265,6 +265,16 @@
     padding:8px 22px;border-radius:999px;font-size:14px;letter-spacing:3px;
     backdrop-filter:blur(6px);
   }
+  /* Past the clock: the round is still going and the zone is closing for good. */
+  .timer-pill.sudden{
+    color:var(--magenta);border-color:rgba(255,47,201,0.55);
+    font-size:12px;letter-spacing:2px;
+    animation:suddenPulse 1s ease-in-out infinite;
+  }
+  @keyframes suddenPulse{
+    0%,100%{box-shadow:0 0 0 rgba(255,47,201,0);}
+    50%{box-shadow:0 0 18px rgba(255,47,201,0.45);}
+  }
 
   .alive-pill{
     position:absolute;top:18px;right:20px;
@@ -592,6 +602,20 @@
   }
   .btn-leave:hover{border-color:var(--magenta);box-shadow:0 0 16px rgba(255,47,201,0.2);}
   .btn-leave:active{transform:scale(0.97);}
+
+  /* Pause / in-match menu — Escape during a round. Sits above #hud (z-index 8)
+     and the spectator bar so it's always the frontmost thing in the arena. */
+  #pauseScreen{
+    z-index:12;
+    background:radial-gradient(ellipse at center, rgba(21,12,38,0.72) 0%, rgba(5,6,10,0.95) 70%);
+    animation:pauseIn .18s ease-out;
+  }
+  @keyframes pauseIn{ 0%{opacity:0;} 100%{opacity:1;} }
+  .pause-note{
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;
+    color:var(--magenta);text-transform:uppercase;max-width:34ch;line-height:1.7;
+  }
+  .end-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
 </style>
 </head>
 <body>
@@ -658,8 +682,26 @@
     <div class="result-name" id="endEyebrow">ROUND OVER</div>
     <div class="brand" id="endTitle" style="font-size:clamp(36px,7vw,64px);">YOU SURVIVED</div>
     <div class="tag" id="endSub">Last color standing.</div>
-    <button class="btn" id="againBtn">Play Again</button>
+    <div class="end-actions">
+      <button class="btn" id="againBtn">Play Again</button>
+      <button class="btn ghost" id="endMenuBtn">Main Menu</button>
+    </div>
   </div>
+
+  <div class="overlay hidden" id="pauseScreen">
+    <div class="result-name">Match in progress</div>
+    <div class="brand" style="font-size:clamp(36px,7vw,64px);">PAUSED</div>
+    <div class="tag" id="pauseSub">The arena is frozen. Take your time.</div>
+    <div class="end-actions">
+      <button class="btn" id="resumeBtn">Resume</button>
+      <button class="btn ghost" id="pauseMenuBtn">Main Menu</button>
+    </div>
+    <div class="pause-note hidden" id="pauseNote">
+      Online matches keep running while this is open — leaving forfeits the round.
+    </div>
+    <div class="controls-hint">Esc to resume</div>
+  </div>
+
 </div>
 </div>
 

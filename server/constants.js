@@ -100,6 +100,44 @@ const SNAPSHOT_RATE = 20; // Send snapshots at 20 Hz (every 3 ticks)
 const INTERPOLATION_DELAY = 100; // 100ms buffer for interpolation
 const RECONCILIATION_THRESHOLD = 5; // pixels before position correction
 
+// Roaming final zone — mirrors src/utils.js. Once the zone is fully shrunk it
+// wanders instead of sitting in the middle of the arena.
+const ZONE_ROAM_RADIUS = 150;
+const ZONE_ROAM_SPEED = 0.16;
+const ZONE_ROAM_RAMP = 2.5;
+const ZONE_ROAM_MARGIN = 12;
+
+// Sudden death — the clock doesn't end the round any more, so the zone keeps
+// closing past SAFE_R1 until only one blob can survive. Mirrors src/utils.js.
+const SUDDEN_DEATH_SHRINK = 14;
+const SUDDEN_DEATH_MIN_R = 0;
+// Safety net only: at 14 px/sec a 90px zone is gone in ~6.4s, and everyone left
+// is taking escalating void damage well before that. If a room somehow hasn't
+// resolved this long after the clock, end it rather than tick forever.
+const SUDDEN_DEATH_TIMEOUT = 45;
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// Must stay identical to zoneCenterAt() in src/utils.js — the client renders the
+// zone from its own copy between snapshots, so any divergence shows up as the
+// circle visibly snapping every time a snapshot lands.
+function zoneCenterAt(roamT, safeR, worldW, worldH) {
+  const cx = worldW / 2, cy = worldH / 2;
+  if (roamT <= 0) return { x: cx, y: cy };
+
+  const ramp = Math.min(1, roamT / ZONE_ROAM_RAMP);
+  const t = roamT * ZONE_ROAM_SPEED;
+  let ox = Math.sin(t * Math.PI * 2) * ZONE_ROAM_RADIUS * ramp;
+  let oy = Math.sin(t * Math.PI * 2 * 0.618 + 1.1) * ZONE_ROAM_RADIUS * ramp;
+
+  const maxX = Math.max(0, worldW / 2 - safeR - ZONE_ROAM_MARGIN);
+  const maxY = Math.max(0, worldH / 2 - safeR - ZONE_ROAM_MARGIN);
+  ox = clamp(ox, -maxX, maxX);
+  oy = clamp(oy, -maxY, maxY);
+
+  return { x: cx + ox, y: cy + oy };
+}
+
 module.exports = {
   TICK_RATE,
   TICK_INTERVAL,
@@ -153,5 +191,13 @@ module.exports = {
   CORNERS,
   SNAPSHOT_RATE,
   INTERPOLATION_DELAY,
-  RECONCILIATION_THRESHOLD
+  RECONCILIATION_THRESHOLD,
+  ZONE_ROAM_RADIUS,
+  ZONE_ROAM_SPEED,
+  ZONE_ROAM_RAMP,
+  ZONE_ROAM_MARGIN,
+  SUDDEN_DEATH_SHRINK,
+  SUDDEN_DEATH_MIN_R,
+  SUDDEN_DEATH_TIMEOUT,
+  zoneCenterAt
 };

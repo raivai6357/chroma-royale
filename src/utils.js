@@ -123,6 +123,55 @@ export const ZONE_WARN_PULSE = 0.5;    // pulse frequency during warning
 export const ZONE_FINAL_SPEED = 2.5;   // speed multiplier for final circle
 export const ZONE_DAMAGE_SCALING = 0.1;// damage increase per second in zone
 
+// ---------- roaming final zone ----------
+// Once the zone reaches SAFE_R1 it stops shrinking and starts wandering, so the
+// endgame isn't a static circle in the middle of the map that everyone can camp.
+// The path is a Lissajous curve: two sines at different frequencies, which gives
+// smooth, non-repeating-looking drift from a pure function of elapsed time (no
+// integrated state, so the server and a reconnecting client agree exactly).
+export const ZONE_ROAM_RADIUS = 150;    // px of drift allowed from the arena centre
+export const ZONE_ROAM_SPEED = 0.16;    // base angular rate — a full loop is ~40s
+export const ZONE_ROAM_RAMP = 2.5;      // seconds to ease drift in from standstill
+export const ZONE_ROAM_MARGIN = 12;     // keep this much safe zone inside the walls
+
+// ---------- sudden death ----------
+// The clock no longer decides the round: if blobs are still alive when it runs
+// out, the zone keeps closing past SAFE_R1 until it can't sustain anyone. This
+// is what guarantees the match terminates — without it two same-colour blobs
+// bounce off each other for 0 damage forever and the round never resolves.
+export const SUDDEN_DEATH_SHRINK = 14;  // px/sec the zone keeps closing after time
+export const SUDDEN_DEATH_MIN_R = 0;    // it really does go to nothing
+
+// Where the safe zone's centre sits, given how long it has been roaming and how
+// big it currently is. Pure function of (roamT, safeR) — no accumulated state —
+// so the server, the local sim and a client that just reconnected all land on
+// the same point for the same inputs.
+//
+// The radius clamp is what keeps the circle honest: drift is capped so the zone
+// never hangs off the edge of the arena, which would make part of it unreachable
+// and hand a free win to whoever happened to be on the right side.
+export function zoneCenterAt(roamT, safeR, worldW, worldH){
+  const cx = worldW / 2, cy = worldH / 2;
+  if (roamT <= 0) return { x: cx, y: cy };
+
+  // Ease the drift in so the zone doesn't visibly jerk the instant it starts.
+  const ramp = Math.min(1, roamT / ZONE_ROAM_RAMP);
+
+  // Two different frequencies => the centre traces a figure-eight-ish path
+  // rather than a circle, so players can't just orbit at a fixed offset.
+  const t = roamT * ZONE_ROAM_SPEED;
+  let ox = Math.sin(t * Math.PI * 2) * ZONE_ROAM_RADIUS * ramp;
+  let oy = Math.sin(t * Math.PI * 2 * 0.618 + 1.1) * ZONE_ROAM_RADIUS * ramp;
+
+  // Never let the circle leave the arena.
+  const maxX = Math.max(0, worldW / 2 - safeR - ZONE_ROAM_MARGIN);
+  const maxY = Math.max(0, worldH / 2 - safeR - ZONE_ROAM_MARGIN);
+  ox = clamp(ox, -maxX, maxX);
+  oy = clamp(oy, -maxY, maxY);
+
+  return { x: cx + ox, y: cy + oy };
+}
+
 // ---------- fixed timestep ----------
 // Physics runs at a constant 60 Hz regardless of display refresh rate.
 // This ensures deterministic simulation for multiplayer sync.

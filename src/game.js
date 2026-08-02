@@ -1,5 +1,5 @@
 import {
-  COLORS, WORLD_W, WORLD_H, BOT_COUNT, BOX_COUNT, BOX_R, GAME_DURATION,
+  COLORS, WORLD_W, WORLD_H, BOT_COUNT, BOX_COUNT, BOX_R,
   SAFE_R0, DARK_DRAIN, NAME_POOL, rand, dist2, clamp, radiusForHp,
   ensureAudio, getAudioCtx, FIXED_DT, MAX_FRAME_DT, playCountdownTick
 } from './utils.js';
@@ -11,7 +11,7 @@ import { resolveCombat, spawnBurst } from './combat.js';
 import { render, resize, getCanvas } from './renderer.js';
 import { input, consumeDash, setupInput } from './input.js';
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
-         showSpectate, updateSpectate, hideSpectate } from './ui.js';
+         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu } from './ui.js';
 
 // pre-match countdown: 3 · 2 · 1 · GO. The sim is frozen for all of it, so the
 // arena renders (and the spawn marker is visible) before anyone can move.
@@ -51,6 +51,7 @@ export class Game {
     this.spawnMark = 0;      // >0 = draw the "YOU" marker on the local player
 
     this.spectating = false; // true once the player is out and the leave bar is up
+    this.paused = false;     // Escape menu is up; rAF is stopped and the sim frozen
 
     // Fixed timestep accumulator
     this.accumulator = 0;
@@ -133,10 +134,13 @@ export class Game {
     this.countLabel = '';
     this.spawnMark = 0;
     this.spectating = false;
+    this.paused = false;
+    hidePause();
     hideSpectate();
     this.elapsed = 0;
     this.safeR = SAFE_R0;
     this.center = {x:WORLD_W/2, y:WORLD_H/2};
+    this.zoneRoamT = 0;
     this.accumulator = 0;
     this.tick = 0;
     resetHUD();
@@ -406,7 +410,7 @@ export class Game {
 
   // ---------- main loop (fixed timestep) ----------
   step(t){
-    if(!this.running) return;
+    if(!this.running || this.paused) return;
     
     // Calculate frame delta, capped to avoid spiral of death
     const frameDt = Math.min(MAX_FRAME_DT, (t - this.lastT) / 1000 || 0);
@@ -425,9 +429,13 @@ export class Game {
     render(this);
     updateHUD(this);
 
+    // The round ends when exactly one blob is left standing — never on the
+    // clock. If time expires with 2, 3 or 4 alive the match continues into
+    // sudden death (updateZone keeps closing the circle past SAFE_R1), so a
+    // winner is always someone who actually outlasted the others rather than
+    // whoever happened to be alive when the timer hit zero.
     const aliveNow = this.em.actors().filter(e=>e.alive).length;
-    const timeUp = this.elapsed >= GAME_DURATION;
-    if(aliveNow<=1 || timeUp || (!this.player.alive && aliveNow===0)){
+    if(aliveNow<=1){
       this.endGame(aliveNow);
       return;
     }
@@ -524,6 +532,61 @@ export class Game {
     this.events.emit(EventType.GAME_END, {
       winner: null,
       survivors: survivors.map(e => e.id)
+    });
+  }
+
+  // ---------- pause ----------
+  // Practice is a local sim, so Escape can genuinely stop it: we cancel the rAF
+  // and the loop simply isn't running. `running` stays true so the round is still
+  // considered live (endGame/leaveMatch guard on it) — `paused` is what gates the
+  // loop, and resume() is the only thing that restarts it.
+  pause(){
+    if(!this.running || this.paused) return;
+    this.paused = true;
+    cancelAnimationFrame(this.animId);
+    this.animId = null;
+    // Boost is held down, so a keypress that steals focus would otherwise leave
+    // it stuck on and quietly drain HP the moment we resume.
+    this.input.boosting = false;
+    consumeDash();
+    showPause(true);
+  }
+
+  resume(){
+    if(!this.running || !this.paused) return;
+    this.paused = false;
+    hidePause();
+    consumeDash();  // drop anything buffered while the menu was up
+    // Re-stamp the clock: lastT is still sitting at the frame before the pause,
+    // so without this the accumulator would swallow the whole paused duration
+    // and fast-forward the sim to catch up.
+    this.lastT = performance.now();
+    this.accumulator = 0;
+    cancelAnimationFrame(this.animId);
+    this.animId = requestAnimationFrame(this._step);
+  }
+
+  togglePause(){
+    if(this.paused) this.resume(); else this.pause();
+  }
+
+  // Abandon the round outright and go back to the start screen. Unlike
+  // leaveMatch() this works while alive, and skips the end screen entirely —
+  // quitting isn't a result, so there's nothing to report.
+  quitToMenu(){
+    this.running = false;
+    this.paused = false;
+    cancelAnimationFrame(this.animId);
+    this.animId = null;
+    this.countdown = 0;
+    this.spawnMark = 0;
+    this.spectating = false;
+    this.input.boosting = false;
+    consumeDash();
+    showMainMenu();
+    this.events.emit(EventType.GAME_END, {
+      winner: null,
+      survivors: this.em.actors().filter(e => e.alive).map(e => e.id)
     });
   }
 }
