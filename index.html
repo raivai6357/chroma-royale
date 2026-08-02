@@ -26,7 +26,9 @@
     -webkit-tap-highlight-color:transparent;
   }
   #app{
-    position:relative;width:100vw;height:100vh;
+    /* vh first as the fallback, then dvh where supported: on mobile vh measures
+       the viewport with the toolbar collapsed, which overflows while it's shown. */
+    position:relative;width:100vw;height:100vh;height:100dvh;
     display:flex;align-items:center;justify-content:center;
     background:
       radial-gradient(circle at 50% 50%, rgba(43,232,255,0.05), transparent 60%),
@@ -252,6 +254,67 @@
     .htp-foot .btn{min-height:44px;}
     .htp-x{min-height:44px;}
     .htp-scroll{-webkit-overflow-scrolling:touch;}
+  }
+
+  /* ---- Landscape on mobile ----
+     The arena is a fixed 4:3. In landscape a phone viewport is far wider than it
+     is tall, so height is the binding constraint: sizing off height and letting
+     aspect-ratio derive the width fills the screen without ever cropping the
+     playfield. 100dvh (not vh) so the browser's collapsing toolbar can't push the
+     bottom of the arena — and the dash button — under the chrome. */
+  @media (pointer:coarse) and (orientation:landscape){
+    #stage{
+      width:auto;height:100vh;max-width:100vw;max-height:100vh;
+      height:100dvh;max-height:100dvh;
+      border-radius:0;box-shadow:none;
+    }
+    /* Full-bleed: a rounded, shadowed card wastes scarce vertical space here. */
+    #app{background:var(--ink);}
+    /* Pull the HUD in from the rounded corners the notch/curve tends to clip. */
+    .hp-wrap{left:14px;bottom:14px;width:min(240px,32vw);}
+    #dashBtn{right:16px;bottom:104px;width:64px;height:64px;font-size:12px;}
+    .topbar{top:10px;}
+    /* The sheet is a scroller inside a short viewport — keep it off both edges. */
+    .htp-shell{max-height:100vh;max-height:100dvh;}
+    .htp-sec{padding:13px 0;}
+    .htp-foot{padding:9px 22px 11px;}
+  }
+
+  /* ---- Portrait gate ----
+     Hidden by default and only revealed for touch devices held upright, so a
+     desktop window that happens to be tall never triggers it. Capped at phone
+     widths on purpose: portrait is width-bound, so a phone renders the arena at
+     roughly half scale (unplayable) while a tablet still gets ~0.9x — blocking
+     a tablet that can display the game fine would be a downgrade, not a fix. */
+  #rotateGate{display:none;}
+  @media (pointer:coarse) and (orientation:portrait) and (max-width:760px){
+    #rotateGate{
+      display:flex;position:fixed;inset:0;z-index:9999;
+      flex-direction:column;align-items:center;justify-content:center;gap:18px;
+      background:var(--ink);text-align:center;padding:24px;
+    }
+    /* Everything behind the gate stops rendering: no half-laid-out menu behind. */
+    #app{display:none;}
+    .rot-phone{
+      width:74px;height:120px;border:3px solid #352f52;border-radius:12px;
+      display:flex;align-items:center;justify-content:center;
+      animation:rotHint 2.4s ease-in-out infinite;
+    }
+    .rot-arrow{font-size:34px;color:var(--cyan);}
+    .rot-title{
+      font-family:'Syne',sans-serif;font-weight:800;font-size:21px;letter-spacing:.5px;
+    }
+    .rot-sub{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);}
+  }
+  /* Tips the outline toward landscape and holds it, showing the target position
+     rather than just spinning. Suppressed for reduced-motion. */
+  @keyframes rotHint{
+    0%,22%{transform:rotate(0deg);}
+    55%,78%{transform:rotate(-90deg);}
+    100%{transform:rotate(0deg);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rot-phone{animation:none;}
   }
 
   /* HUD */
@@ -666,6 +729,14 @@
 </style>
 </head>
 <body>
+<!-- Portrait on a phone can't show a 4:3 arena at a playable size, so we ask for
+     a turn instead of shrinking the game into a letterbox. Sits outside #app so
+     it covers the whole viewport, and is CSS-gated: no JS decides when it shows. -->
+<div id="rotateGate" aria-hidden="true">
+  <div class="rot-phone"><span class="rot-arrow">&#8635;</span></div>
+  <div class="rot-title">Rotate your device</div>
+  <div class="rot-sub">Chroma Royale plays in landscape</div>
+</div>
 <div id="app">
 
 <div id="stage">

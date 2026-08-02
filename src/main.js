@@ -99,3 +99,23 @@ document.getElementById('onlineBtn').addEventListener('click', () => {
 
 initHowTo(() => game.startGame());
 document.getElementById('howToBtn').addEventListener('click', showHowTo);
+
+// Ask for landscape on touch devices. This is best-effort by design: the Screen
+// Orientation API only honours a lock in fullscreen, and iOS Safari doesn't
+// implement it at all — so the CSS portrait gate in index.html, not this call,
+// is what actually guarantees the player never gets an unplayable portrait
+// arena. Wrapped in try/catch because a rejected lock throws synchronously on
+// some Android builds rather than returning a promise.
+function tryLockLandscape(){
+  try {
+    const o = screen.orientation;
+    if (o && typeof o.lock === 'function') o.lock('landscape').catch(() => {});
+  } catch { /* unsupported — the CSS gate covers it */ }
+}
+if (matchMedia('(pointer:coarse)').matches) {
+  tryLockLandscape();
+  // A lock is dropped when fullscreen exits, so re-assert it on the way in.
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) tryLockLandscape();
+  });
+}
