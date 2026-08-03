@@ -159,17 +159,12 @@ function buildMatchmakingPanel() {
       <div class="matchmaking-actions" id="matchmaking-actions">
         <button class="btn-primary btn-large btn-block" id="btn-find-match">⚔️ FIND MATCH</button>
 
-        <div class="matchmaking-or">— or join by code —</div>
-        <div class="join-row">
-          <input type="text" id="room-code-input" placeholder="Room code..." maxlength="20">
-          <button class="btn-secondary" id="btn-join-room">Join</button>
-        </div>
         <div class="join-error" id="join-error"></div>
 
         <div class="matchmaking-or">— or create —</div>
         <div class="create-btn-row">
-          <button class="btn-secondary" id="btn-create-public">＋ Public Room</button>
-          <button class="btn-secondary" id="btn-create-private">🔒 Private Room</button>
+          <button class="btn-secondary" id="btn-create-public">＋ Open Room</button>
+          <button class="btn-secondary" id="btn-create-private">🔒 Password Room</button>
         </div>
 
         <div class="create-form hidden" id="create-form">
@@ -200,15 +195,6 @@ function buildMatchmakingPanel() {
     hideQueueUI();
   });
 
-  // Join by code
-  const codeInput = document.getElementById('room-code-input');
-  const doJoin = () => {
-    const code = codeInput.value.trim();
-    if (code) network.joinRoom(code);
-  };
-  document.getElementById('btn-join-room').addEventListener('click', doJoin);
-  codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
-
   // Create room forms
   document.getElementById('btn-create-public').addEventListener('click', () => openCreateForm(false));
   document.getElementById('btn-create-private').addEventListener('click', () => openCreateForm(true));
@@ -238,7 +224,10 @@ function closeCreateForm() {
 
 function submitCreateForm() {
   const name = document.getElementById('create-name-input').value.trim() || `${network.playerName || 'Player'}'s Room`;
-  const settings = { name, isPublic: !createFormIsPrivate, maxPlayers: 4 };
+  // Both kinds get listed in the lobby browser. "Private" now means
+  // password-protected, not hidden — a hidden room would be unreachable
+  // since there's no code to share.
+  const settings = { name, maxPlayers: 4 };
   if (createFormIsPrivate) {
     const pw = document.getElementById('create-password-input').value.trim();
     if (!pw) {
@@ -284,7 +273,7 @@ function buildLobbyPanel() {
         <div class="room-list" id="room-list">
           <!-- Populated dynamically -->
         </div>
-        <div class="room-empty" id="room-empty">No open rooms. Create one from the Play tab!</div>
+        <div class="room-empty" id="room-empty">No rooms open right now. Create one from the Play tab — 🔒 rooms need a password to join.</div>
       </div>
 
       <!-- Current room (shown when in a room) -->
@@ -392,10 +381,14 @@ function renderRoomList(rooms) {
 
     if (locked) {
       const input = prompt.querySelector('.room-pw-input');
+      const err = prompt.querySelector('.password-error');
       const go = () => {
         const pw = input.value.trim();
         if (pw) network.joinRoom(id, pw);
       };
+      // Clear the previous failure as soon as they start retyping, otherwise
+      // "Wrong password" sits there and looks like it's rejecting the new input.
+      input.addEventListener('input', () => err.classList.add('hidden'));
       prompt.querySelector('.room-pw-go').addEventListener('click', go);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
     }

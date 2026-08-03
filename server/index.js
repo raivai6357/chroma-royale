@@ -440,7 +440,9 @@ setInterval(() => {
     return;
   }
 
-  const room = rooms.createRoom(matched[0], firstWs, {}, db.getOrCreatePlayer(matched[0]).name);
+  // listed:false — a queue-built room isn't something to browse into; the only
+  // way in is being matched, and it starts as soon as everyone is seated.
+  const room = rooms.createRoom(matched[0], firstWs, { listed: false }, db.getOrCreatePlayer(matched[0]).name);
 
   for (let i = 1; i < matched.length; i++) {
     const playerWs = socketFor(matched[i]);

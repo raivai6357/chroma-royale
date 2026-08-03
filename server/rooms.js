@@ -26,8 +26,11 @@ class Room {
       ...settings
     };
 
-    // Room visibility / access
-    this.isPublic = settings.isPublic !== false; // public by default
+    // Visibility is separate from access: private rooms are still listed in the
+    // browser (that's how players find them now that join-by-code is gone), they
+    // just need the password to get in. `listed` exists for matchmaking rooms,
+    // which nobody should be able to walk into from the lobby.
+    this.listed = settings.listed !== false;
     this.password = settings.password || null;    // plaintext, in-memory only
     this.name = (settings.name || `Room ${id}`).toString().slice(0, 24);
 
@@ -596,7 +599,7 @@ class RoomManager {
   getRoomList() {
     const list = [];
     for (const [id, room] of this.rooms) {
-      if (room.isPublic && room.state === 'lobby') {
+      if (room.listed && room.state === 'lobby') {
         list.push({
           id,
           name: room.name,
