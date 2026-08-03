@@ -6,10 +6,11 @@ import {
 import { updatePlayer, updateDashState, canDash, requestDash } from './physics.js';
 import { spawnSpark, spawnBurst } from './combat.js';
 import { render } from './renderer.js';
-import { input, consumeDash } from './input.js';
+import { input, consumeDash, aimDir, releaseInputs } from './input.js';
 import { network } from './network.js';
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
-         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu } from './ui.js';
+         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu,
+         setHudVisible } from './ui.js';
 
 // The online round is server-authoritative: the server owns combat, the zone,
 // pickups and every remote blob. This class is the *shadow* of Game — it wears
@@ -140,7 +141,7 @@ export class OnlineGame {
 
     ui.startScreen.classList.add('hidden');
     ui.endScreen.classList.add('hidden');
-    ui.hud.classList.remove('hidden');
+    setHudVisible(true);
 
     // The server runs its own countdown before game_start, so by the time we
     // get here the round is live. Keep a short GO flash + spawn marker so the
@@ -169,7 +170,7 @@ export class OnlineGame {
     this.spectating = false;
     hidePrematch();
     hideSpectate();
-    ui.hud.classList.add('hidden');
+    setHudVisible(false);
     ui.endScreen.classList.remove('hidden');
 
     const won = data && data.winnerPlayerId && data.winnerPlayerId === this.myPlayerId;
@@ -217,7 +218,7 @@ export class OnlineGame {
     this.spectating = false;
     hidePrematch();
     hideSpectate();
-    ui.hud.classList.add('hidden');
+    setHudVisible(false);
     ui.endScreen.classList.remove('hidden');
     ui.endEyebrow.textContent = "DISCONNECTED";
     ui.endTitle.textContent = "MATCH LOST";
@@ -617,9 +618,11 @@ export class OnlineGame {
     this.tick++;
   }
 
-  // Mirror updatePlayer's derivation exactly: mouseCanvas is an aim *point*, so
-  // the direction is the normalized offset from the blob, with the same 4px
-  // deadzone and the same hp > CRIT_HP boost gate the server applies.
+  // Mirror updatePlayer's derivation exactly, via the shared aimDir: the mouse
+  // aim point and the joystick vector both resolve there, so prediction and the
+  // intent we ship the server can't disagree. Magnitude can be < 1 on a
+  // half-pushed stick — the server applies dirX/dirY as sent, so partial
+  // deflection is genuinely slower on both sides rather than a desync.
   _buildInput(dashQueued){
     const p = this.player;
     if(!p) return { dirX: 0, dirY: 0, boosting: false, dash: false };
@@ -627,12 +630,10 @@ export class OnlineGame {
     // already understands (it's what an idle cursor produces), so the blob just
     // coasts to a halt rather than tracking a cursor nobody is aiming.
     if(this.paused) return { dirX: 0, dirY: 0, boosting: false, dash: false };
-    const dx = this.input.mouseCanvas.x - p.x;
-    const dy = this.input.mouseCanvas.y - p.y;
-    const d = Math.sqrt(dx*dx + dy*dy);
+    const aim = aimDir(p.x, p.y);
     return {
-      dirX: d > 4 ? dx / d : 0,
-      dirY: d > 4 ? dy / d : 0,
+      dirX: aim.x,
+      dirY: aim.y,
       boosting: this.input.boosting && p.hp > CRIT_HP,
       dash: dashQueued
     };
@@ -707,7 +708,11 @@ export class OnlineGame {
       if(e.blinkTimer <= 0){ e.blink = 0.12; e.blinkTimer = rand(2,5); }
     }
     let gdx, gdy;
-    if(isLocal){ gdx = this.input.mouseCanvas.x - e.x; gdy = this.input.mouseCanvas.y - e.y; }
+    if(isLocal){
+      const aim = aimDir(e.x, e.y);
+      if(aim.x || aim.y){ gdx = aim.x; gdy = aim.y; }
+      else { gdx = e.vx; gdy = e.vy; }
+    }
     else { gdx = e.vx; gdy = e.vy; }
     const gl = Math.hypot(gdx, gdy);
     const tgx = gl > 1 ? gdx/gl : 0, tgy = gl > 1 ? gdy/gl : 0;
@@ -796,7 +801,7 @@ export class OnlineGame {
     this.spectating = false;
     hidePrematch();
     hideSpectate();
-    ui.hud.classList.add('hidden');
+    setHudVisible(false);
     ui.endScreen.classList.remove('hidden');
     ui.endEyebrow.textContent = "LEFT THE ARENA";
     ui.endTitle.textContent = "ELIMINATED";
@@ -812,8 +817,7 @@ export class OnlineGame {
   pause(){
     if(!this.running || this.paused) return;
     this.paused = true;
-    this.input.boosting = false;
-    consumeDash();
+    releaseInputs();
     showPause(false);
   }
 
@@ -841,8 +845,7 @@ export class OnlineGame {
     this.countdown = 0;
     this.spawnMark = 0;
     this.spectating = false;
-    this.input.boosting = false;
-    consumeDash();
+    releaseInputs();
     showMainMenu();
   }
 }

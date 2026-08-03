@@ -181,9 +181,40 @@ export const PLAYER_R_MAX = 26;  // radius ceiling (HP can't exceed 100, this is
 export const BOX_R = 10;
 export const NAME_POOL = ["VEX","KIRA","NULL","ZEPH","ORYX","JINX","MOTH","RAZE","IVY","SKULK","FANG","DUSK","NOVA","PIP","GRIM","LUNE"];
 
-// The map is a fixed 800x600 arena, and the canvas is exactly that size.
+// The arena is a fixed 800x600 world. The canvas is *not* that size — it's
+// scaled to whatever the element measures (see renderer.resize) and the context
+// is transformed so drawing code keeps working in these world units.
 export const WORLD_W = 800;
 export const WORLD_H = 600;
+
+// ---------- device tier ----------
+// Phones are fill-rate bound, not CPU bound: a 3x DPR canvas means ~9x the
+// pixels to shade every frame, which is what actually drops the framerate. Cap
+// the backing store instead — 2x is past the point of visible difference on a
+// ~6" screen, and 1.5x on a low-core device buys most of the rest.
+export const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches;
+const FEW_CORES = (navigator.hardwareConcurrency || 8) <= 4;
+export const DPR_CAP = TOUCH ? (FEW_CORES ? 1.5 : 2) : 3;
+
+// Drop the expensive-but-decorative effects on touch/low-core devices. The one
+// that matters is shadowBlur: it's a per-draw gaussian, and the renderer sets it
+// several times per entity per frame, so on a phone GPU it costs more than
+// everything else here combined. Detected from the device, not the window size,
+// so resizing a desktop browser never downgrades it.
+export const LOW_FX = TOUCH || FEW_CORES;
+// Set ctx.shadowBlur only when we can afford it, so call sites stay one-liners.
+export function fxShadow(ctx, color, blur){
+  if(LOW_FX) return;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
+}
+
+// Scale a particle count for the device. Every particle is an arc fill plus a
+// per-frame integrate, so a 30-particle dash burst is real work on a phone;
+// 40% of them still reads as the same effect.
+export function fxCount(n){
+  return LOW_FX ? Math.max(3, Math.round(n * 0.4)) : n;
+}
 
 // ---------- math helpers ----------
 export function rand(a,b){ return a + Math.random()*(b-a); }

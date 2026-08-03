@@ -3,9 +3,10 @@ import {
   BOOST_DRAIN, DASH_SPEED, DASH_DURATION, DASH_COOLDOWN, DASH_HP_COST, DASH_MIN_HP,
   DASH_SHAKE, CRIT_HP, DASH_STATE, DASH_WINDUP_TIME, DASH_RECOVERY_TIME,
   TRAIL_LENGTH, TRAIL_LIFETIME, AI_DIFFICULTY, STAGGER_ACCEL_MULT,
-  rand, dist2, clamp, playWhoosh
+  rand, dist2, clamp, playWhoosh, fxCount
 } from './utils.js';
 import { EventType } from './events.js';
+import { aimDir } from './input.js';
 
 // ---------- Dash State Machine ----------
 // States: READY → WINDUP → ACTIVE → RECOVERY → READY
@@ -143,7 +144,7 @@ function enterDashActive(game, e) {
   game.shockwaves.push({ x: e.x, y: e.y, r: 0, life: 0.3, max: 0.3, color: e.color });
   
   // Particle burst
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < fxCount(30); i++) {
     const jitterAng = rand(-0.9, 0.9);
     const bx = e.dashDirX, by = e.dashDirY;
     const cos = Math.cos(jitterAng), sin = Math.sin(jitterAng);
@@ -286,9 +287,9 @@ export function updateTrail(e, dt) {
 // Update player movement from input
 export function updatePlayer(game, e, dt) {
   const input = game.input;
-  const dx = input.mouseCanvas.x - e.x;
-  const dy = input.mouseCanvas.y - e.y;
-  const d = Math.sqrt(dx * dx + dy * dy);
+  // Steering comes from aimDir so the mouse and the joystick resolve the same
+  // way here, in the online input builder, and in the gaze.
+  const aim = aimDir(e.x, e.y);
   const canBoost = input.boosting && e.hp > CRIT_HP;
 
   // Edge-triggered: only fire on the transition, not every frame held.
@@ -299,9 +300,7 @@ export function updatePlayer(game, e, dt) {
   }
 
   e.boosting = canBoost;
-  // Dead zone: don't jitter when the cursor is basically on top of the blob.
-  const dirX = d > 4 ? dx / d : 0;
-  const dirY = d > 4 ? dy / d : 0;
+  const dirX = aim.x, dirY = aim.y;
   applyMovement(game, e, dirX, dirY, dt, canBoost);
 
   if (canBoost) e.hp = clamp(e.hp - BOOST_DRAIN * dt, 0, 100);

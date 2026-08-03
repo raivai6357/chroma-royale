@@ -6,7 +6,7 @@ import {
   COMBO_WINDOW, COMBO_MULT, MAX_COMBO, STAGGER_DURATION, STAGGER_THRESHOLD,
   CRIT_CHANCE, CRIT_MULT, KNOCKBACK_SCALING,
   HITSTOP_LIGHT, HITSTOP_HEAVY, SHAKE_DECAY,
-  rand, clamp, playImpact, playCritHit, playComboHit, playStaggerHit
+  rand, clamp, playImpact, playCritHit, playComboHit, playStaggerHit, fxCount
 } from './utils.js';
 import { EventType } from './events.js';
 
@@ -218,7 +218,7 @@ export function applyHit(game, target, attacker, dmg, attackerHasAdvantage, isCr
 }
 
 export function spawnSpark(game, x, y, color){
-  for(let i=0;i<6;i++){
+  for(let i=0;i<fxCount(6);i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(60,160);
     game.particles.push({
@@ -230,7 +230,7 @@ export function spawnSpark(game, x, y, color){
 
 // Louder version of spawnSpark: more, bigger, longer-lived particles.
 export function spawnCritSpark(game, x, y, color){
-  for(let i=0;i<12;i++){
+  for(let i=0;i<fxCount(12);i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(100,280);
     game.particles.push({
@@ -240,7 +240,7 @@ export function spawnCritSpark(game, x, y, color){
     });
   }
   // A few white ones on top to read as a flash rather than just more colour.
-  for(let i=0;i<6;i++){
+  for(let i=0;i<fxCount(6);i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(50,150);
     game.particles.push({
@@ -252,7 +252,7 @@ export function spawnCritSpark(game, x, y, color){
 }
 
 export function spawnBurst(game, x, y, color){
-  for(let i=0;i<16;i++){
+  for(let i=0;i<fxCount(16);i++){
     const ang = rand(0,Math.PI*2);
     const spd = rand(40,220);
     game.particles.push({

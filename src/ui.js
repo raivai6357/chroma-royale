@@ -21,6 +21,8 @@ const endEyebrow = document.getElementById('endEyebrow');
 const endTitle = document.getElementById('endTitle');
 const endSub = document.getElementById('endSub');
 const dashBtn = document.getElementById('dashBtn');
+const boostBtn = document.getElementById('boostBtn');
+const touchControls = document.getElementById('touchControls');
 // pre-match countdown overlay
 const prematch = document.getElementById('prematch');
 const pmCount = document.getElementById('pmCount');
@@ -45,6 +47,14 @@ export const ui = {
   endEyebrow, endTitle, endSub, leaveBtn,
   resumeBtn, pauseMenuBtn, endMenuBtn
 };
+
+// The thumb controls live outside #stage (they need the gutters beside the 4:3
+// arena), so they can't inherit the HUD's hidden class. One function owns both,
+// which is what keeps them from drifting apart across the seven call sites.
+export function setHudVisible(visible){
+  hud.classList.toggle('hidden', !visible);
+  if(touchControls) touchControls.classList.toggle('hidden', !visible);
+}
 
 // ---------- pause / in-match menu ----------
 // `frozen` is false online, where the server keeps simulating regardless — the
@@ -73,7 +83,7 @@ export function showMainMenu(){
   hidePause();
   hidePrematch();
   hideSpectate();
-  hud.classList.add('hidden');
+  setHudVisible(false);
   endScreen.classList.add('hidden');
   startScreen.classList.remove('hidden');
 }
@@ -156,6 +166,9 @@ export function updateHUD(game){
   }
   wasDashReady = dashReady;
   dashBtn.classList.toggle('notready', !dashReady);
+  // Boost is gated on hp > CRIT_HP in the physics, so grey the button out at the
+  // same threshold rather than letting players press a control that does nothing.
+  if(boostBtn) boostBtn.classList.toggle('notready', hp <= CRIT_HP);
 
   // Past the clock the round doesn't end — it goes to sudden death and the zone
   // keeps closing. A timer frozen at 00:00 would read as a bug, so say what's

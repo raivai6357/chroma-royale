@@ -1,28 +1,67 @@
-import { COLORS, PASSIVES, BEATS, WORLD_W, WORLD_H, BOX_R, CRIT_HP, MAX_SPEED, clamp, ZONE_WARN_TIME } from './utils.js';
+import { COLORS, PASSIVES, BEATS, WORLD_W, WORLD_H, BOX_R, CRIT_HP, MAX_SPEED, clamp, ZONE_WARN_TIME,
+         LOW_FX, DPR_CAP, fxShadow } from './utils.js';
 
 // ---------- canvas ----------
-// The map is a fixed 800x600 arena, and the canvas is exactly that size —
-// no camera-follow needed since the whole map is always on screen.
+// The arena is a fixed 800x600 world, but the canvas is whatever size CSS gives
+// it — full-bleed on a phone in landscape, a 4:3 card on desktop. So the backing
+// store is sized from the *measured* element and the context is scaled to map
+// world units onto it. Everything below still draws in 800x600 coordinates.
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const mini = document.getElementById('minimap');
 const mctx = mini.getContext('2d');
 
+// Measured in resize() and read by renderMinimap. Zero width means the minimap is
+// display:none (it's hidden on touch, where the bottom corners hold the thumb
+// controls) — the render is skipped entirely rather than drawn off-screen.
+let miniW = 140, miniH = 105;
+
+// The measured CSS width of the canvas, kept so draw code can tell how many real
+// screen pixels a world unit is worth. Anything sized in world units shrinks with
+// it, which is what makes the cycle guide unusable on a phone.
+let cssScale = 1;
+
 export function resize(){
-  canvas.width = WORLD_W * devicePixelRatio;
-  canvas.height = WORLD_H * devicePixelRatio;
-  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  mini.width = 140*devicePixelRatio; mini.height=105*devicePixelRatio;
-  mctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  const dpr = Math.min(devicePixelRatio || 1, DPR_CAP);
+
+  // Fall back to the world size before first layout, when the rect is still 0x0.
+  const rect = canvas.getBoundingClientRect();
+  const cssW = rect.width || WORLD_W;
+  const cssH = rect.height || WORLD_H;
+
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  cssScale = cssW / WORLD_W;
+  // One transform does both jobs: DPR scaling and world→CSS-pixel scaling. The
+  // stage keeps a 4:3 aspect-ratio so sx and sy stay equal and nothing distorts.
+  ctx.setTransform(dpr * cssW / WORLD_W, 0, 0, dpr * cssH / WORLD_H, 0, 0);
+
+  const mrect = mini.getBoundingClientRect();
+  miniW = mrect.width;
+  miniH = mrect.height;
+  if(miniW > 0){
+    mini.width = Math.round(miniW * dpr);
+    mini.height = Math.round(miniH * dpr);
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 }
 
 export function getCanvas(){ return canvas; }
+
+// The stage resizes without the window doing so: the mobile toolbar collapsing,
+// an orientation change, or the HUD appearing all change the measured box. A
+// resize-only listener misses those and leaves the canvas at the wrong scale.
+if(typeof ResizeObserver === 'function'){
+  new ResizeObserver(() => resize()).observe(canvas);
+}
 
 // ---------- amoeba rendering ----------
 // Trace a wobbling blob outline into the current path. Radius is modulated by
 // a couple of sine waves that travel around the rim, so the membrane ripples.
 // `wobble` scales how violent the waving is (0 = round, 1 = lively).
-const BLOB_SEGS = 26;
+// Fewer segments on a phone: this path is stroked/filled two or three times per
+// blob per frame, so the vertex count multiplies faster than it looks.
+const BLOB_SEGS = LOW_FX ? 16 : 26;
 function blobPath(c, r, phase, seed, wobble){
   c.beginPath();
   for(let i=0;i<=BLOB_SEGS;i++){
@@ -143,7 +182,17 @@ function cycleNodes(){
 // Eased so a blob skimming the panel edge can't strobe it between the two levels.
 let cycAlpha = CYC.baseAlpha;
 
+// Below this scale the guide is worse than nothing. Its labels are 8.5px and 6.5px
+// in *world* units, so at the ~0.65 scale a phone gives the arena in landscape they
+// render at 5.5px and 4.2px — unreadable — and the block lands under the HP readout,
+// which landscape moves to the same top-left corner. The colour cycle is already
+// spelled out in real DOM text on the start screen and in How to Play, so dropping
+// it here costs no information. 0.75 clears both short phones (0.65) and the collision
+// threshold while keeping it on tablets (1.0+) and desktops.
+const CYC_MIN_SCALE = 0.75;
+
 function drawCycleGuide(game){
+  if(cssScale < CYC_MIN_SCALE) return;
   // The guide stays fully visible at all times. It only fades while the local player's
   // own blob is over its footprint — nothing else (zone, void, bots) dims it.
   const nodes = cycleNodes();
@@ -202,8 +251,7 @@ function drawCycleGuide(game){
   for(const key of CYCLE_ORDER){
     const n = nodes[key];
     ctx.fillStyle = COLORS[key];
-    ctx.shadowColor = COLORS[key];
-    ctx.shadowBlur = 8;
+    fxShadow(ctx, COLORS[key], 8);
     ctx.beginPath();
     ctx.arc(n.x, n.y, CYC.nodeR, 0, Math.PI*2);
     ctx.fill();
@@ -246,8 +294,7 @@ function drawCycleGuide(game){
   for(const key of CYCLE_ORDER){
     const sx = CYC.x + 8;
     ctx.fillStyle = COLORS[key];
-    ctx.shadowColor = COLORS[key];
-    ctx.shadowBlur = 6;
+    fxShadow(ctx, COLORS[key], 6);
     ctx.beginPath();
     ctx.arc(sx, ly, 3, 0, Math.PI*2);
     ctx.fill();
@@ -319,8 +366,7 @@ export function render(game){
   ctx.closePath();
   ctx.strokeStyle = "rgba(180,110,255,0.55)";
   ctx.lineWidth = 3;
-  ctx.shadowColor = "rgba(150,80,255,0.6)";
-  ctx.shadowBlur = 18;
+  fxShadow(ctx, "rgba(150,80,255,0.6)", 18);
   ctx.stroke();
   ctx.shadowBlur = 0;
 
@@ -330,8 +376,7 @@ export function render(game){
     ctx.translate(bx.x,bx.y);
     ctx.rotate(bx.spin + elapsed*0.6);
     ctx.fillStyle = COLORS[bx.color];
-    ctx.shadowColor = COLORS[bx.color];
-    ctx.shadowBlur = 12;
+    fxShadow(ctx, COLORS[bx.color], 12);
     ctx.fillRect(-BOX_R,-BOX_R,BOX_R*2,BOX_R*2);
     ctx.restore();
   }
@@ -368,8 +413,7 @@ export function render(game){
     ctx.globalAlpha = clamp(s.life/s.max, 0, 1);
     ctx.strokeStyle = COLORS[s.color];
     ctx.lineWidth = s.isCrit ? 6 : 4;
-    ctx.shadowColor = COLORS[s.color];
-    ctx.shadowBlur = s.isCrit ? 24 : 16;
+    fxShadow(ctx, COLORS[s.color], s.isCrit ? 24 : 16);
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
     ctx.stroke();
@@ -409,8 +453,7 @@ export function render(game){
       ctx.strokeStyle = COLORS[e.color];
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
-      ctx.shadowColor = COLORS[e.color];
-      ctx.shadowBlur = 30;
+      fxShadow(ctx, COLORS[e.color], 30);
       ctx.beginPath();
       ctx.moveTo(e.x, e.y);
       ctx.lineTo(e.x - e.dashDirX*45, e.y - e.dashDirY*45);
@@ -436,8 +479,7 @@ export function render(game){
       ctx.globalAlpha = clamp(e.lastCrit / 0.3, 0, 1);
       ctx.strokeStyle = "#ffff00";
       ctx.lineWidth = 3;
-      ctx.shadowColor = "#ffff00";
-      ctx.shadowBlur = 15;
+      fxShadow(ctx, "#ffff00", 15);
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.radius + 8, 0, Math.PI * 2);
       ctx.stroke();
@@ -447,8 +489,7 @@ export function render(game){
     ctx.translate(e.x,e.y);
     const crit = e.hp <= CRIT_HP;
     const col = COLORS[e.color];
-    ctx.shadowColor = col;
-    ctx.shadowBlur = e.boosting ? 30 : (e.dashFlash>0 ? 40 : 16);
+    fxShadow(ctx, col, e.boosting ? 30 : (e.dashFlash>0 ? 40 : 16));
     // slight stretch along velocity when moving fast — sells the momentum.
     // dashing pins it much higher so the body reads as a streak.
     const spd = Math.hypot(e.vx,e.vy);
@@ -548,8 +589,7 @@ export function render(game){
     ctx.fillStyle = t.color;
     // Add glow for crits
     if(t.isCrit){
-      ctx.shadowColor = "#ffff00";
-      ctx.shadowBlur = 10;
+      fxShadow(ctx, "#ffff00", 10);
     }
     ctx.fillText(t.text, t.x, t.y);
     ctx.shadowBlur = 0;
@@ -582,8 +622,7 @@ function drawSpawnMarker(game){
 
   // two concentric rings, the outer one breathing outward
   ctx.strokeStyle = col;
-  ctx.shadowColor = col;
-  ctx.shadowBlur = 14;
+  fxShadow(ctx, col, 14);
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.arc(p.x, p.y, p.radius + 12 + pulse*7, 0, Math.PI*2);
@@ -600,8 +639,7 @@ function drawSpawnMarker(game){
   const tipY = p.y - p.radius - 20 + bob;
   ctx.globalAlpha = alpha;
   ctx.fillStyle = col;
-  ctx.shadowColor = col;
-  ctx.shadowBlur = 12;
+  fxShadow(ctx, col, 12);
   ctx.beginPath();
   ctx.moveTo(p.x, tipY + 10);
   ctx.lineTo(p.x - 9, tipY - 6);
@@ -620,7 +658,10 @@ function drawSpawnMarker(game){
 }
 
 function renderMinimap(game){
-  const mw = 140, mh = 105;
+  // Hidden by CSS on touch devices — the corner belongs to the thumb controls,
+  // and the whole arena is on screen anyway, so there's nothing to skip drawing.
+  if(miniW <= 0) return;
+  const mw = miniW, mh = miniH;
   const center = game.center, safeR = game.safeR;
   mctx.clearRect(0,0,mw,mh);
   mctx.save();

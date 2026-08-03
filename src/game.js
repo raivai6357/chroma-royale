@@ -9,9 +9,10 @@ import { updateZone, applyZoneDamage } from './world.js';
 import { applyMovement, updatePlayer, updateBot, requestDash, updateDashState, canDash } from './physics.js';
 import { resolveCombat, spawnBurst } from './combat.js';
 import { render, resize, getCanvas } from './renderer.js';
-import { input, consumeDash, setupInput } from './input.js';
+import { input, consumeDash, setupInput, aimDir, releaseInputs } from './input.js';
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
-         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu } from './ui.js';
+         showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu,
+         setHudVisible } from './ui.js';
 
 // pre-match countdown: 3 · 2 · 1 · GO. The sim is frozen for all of it, so the
 // arena renders (and the spawn marker is visible) before anyone can move.
@@ -203,9 +204,15 @@ export class Game {
         e.blinkTimer -= dt;
         if(e.blinkTimer<=0){ e.blink = 0.12; e.blinkTimer = rand(2,5); }
       }
-      // gaze: player eyes the cursor, bots look where they're headed
+      // gaze: the player eyes wherever they're steering, bots look where they're
+      // headed. On a released joystick aimDir is zero, so fall back to velocity
+      // and the blob keeps looking along its drift instead of snapping forward.
       let gdx, gdy;
-      if(e.isPlayer){ gdx = this.input.mouseCanvas.x - e.x; gdy = this.input.mouseCanvas.y - e.y; }
+      if(e.isPlayer){
+        const aim = aimDir(e.x, e.y);
+        if(aim.x || aim.y){ gdx = aim.x; gdy = aim.y; }
+        else { gdx = e.vx; gdy = e.vy; }
+      }
       else { gdx = e.vx; gdy = e.vy; }
       const gl = Math.hypot(gdx, gdy);
       const tgx = gl>1 ? gdx/gl : 0, tgy = gl>1 ? gdy/gl : 0;
@@ -417,7 +424,7 @@ export class Game {
     this.resetGame();
     ui.startScreen.classList.add('hidden');
     ui.endScreen.classList.add('hidden');
-    ui.hud.classList.remove('hidden');
+    setHudVisible(true);
 
     // freeze on the spawn layout for "3 · 2 · 1 · GO" before anyone can move
     this.countdown = COUNTDOWN_STEPS + COUNTDOWN_GO;
@@ -442,7 +449,7 @@ export class Game {
     this.spectating = false;
     hidePrematch();
     hideSpectate();
-    ui.hud.classList.add('hidden');
+    setHudVisible(false);
     ui.endScreen.classList.remove('hidden');
     if(this.player.alive){
       ui.endEyebrow.textContent = "VICTORY";
@@ -474,7 +481,7 @@ export class Game {
     this.spectating = false;
     hidePrematch();
     hideSpectate();
-    ui.hud.classList.add('hidden');
+    setHudVisible(false);
     ui.endScreen.classList.remove('hidden');
     ui.endEyebrow.textContent = "LEFT THE ARENA";
     ui.endTitle.textContent = "ELIMINATED";
@@ -497,10 +504,10 @@ export class Game {
     this.paused = true;
     cancelAnimationFrame(this.animId);
     this.animId = null;
-    // Boost is held down, so a keypress that steals focus would otherwise leave
-    // it stuck on and quietly drain HP the moment we resume.
-    this.input.boosting = false;
-    consumeDash();
+    // Boost is held down, so a keypress (or a finger leaving the boost button
+    // under the menu) would otherwise leave it latched on and quietly drain HP
+    // the moment we resume. Same for the joystick.
+    releaseInputs();
     showPause(true);
   }
 
@@ -533,8 +540,7 @@ export class Game {
     this.countdown = 0;
     this.spawnMark = 0;
     this.spectating = false;
-    this.input.boosting = false;
-    consumeDash();
+    releaseInputs();
     showMainMenu();
     this.events.emit(EventType.GAME_END, {
       winner: null,

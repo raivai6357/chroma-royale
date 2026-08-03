@@ -43,12 +43,24 @@
   }
   canvas#c{position:absolute;top:0;left:0;width:100%;height:100%;display:block;cursor:crosshair;}
 
+  /* Scrollable by design: a phone in landscape gives the stage ~330px of height,
+     which is less than this content needs. Without overflow the top and bottom
+     (the title and the Drop In button) were simply clipped away with no way to
+     reach them. `justify-content:center` can't be used with a scroller — it
+     centres by pushing content past the top edge, which is unscrollable — so the
+     children get `margin:auto` instead, which centres while overflowing both
+     ways reachably. */
   .overlay{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    position:absolute;inset:0;display:flex;align-items:center;
     flex-direction:column;text-align:center;gap:22px;
     background:radial-gradient(ellipse at center, rgba(21,12,38,0.55) 0%, rgba(5,6,10,0.92) 70%);
     z-index:10;
+    overflow-y:auto;overflow-x:hidden;padding:18px 16px;
+    -webkit-overflow-scrolling:touch;
   }
+  .overlay > *{flex:none;}
+  .overlay > :first-child{margin-top:auto;}
+  .overlay > :last-child{margin-bottom:auto;}
   .hidden{display:none !important;}
 
   .brand{
@@ -90,6 +102,13 @@
   .btn.ghost:hover{border-color:var(--cyan);box-shadow:0 0 20px rgba(43,232,255,0.15);}
 
   .controls-hint{color:#4b4768;font-size:12px;letter-spacing:1px;text-transform:uppercase;}
+  /* The control scheme differs by device, so the hint has to as well — telling a
+     phone player to right-click is worse than saying nothing. */
+  .touch-only{display:none;}
+  @media (pointer:coarse){
+    .desktop-only{display:none;}
+    .touch-only{display:block;}
+  }
 
   /* How to Play — a scrolling sheet inside the arena, built by src/howto.js */
   #howToScreen{gap:0;justify-content:flex-start;background:rgba(5,6,10,0.96);}
@@ -254,30 +273,9 @@
     .htp-foot .btn{min-height:44px;}
     .htp-x{min-height:44px;}
     .htp-scroll{-webkit-overflow-scrolling:touch;}
-  }
-
-  /* ---- Landscape on mobile ----
-     The arena is a fixed 4:3. In landscape a phone viewport is far wider than it
-     is tall, so height is the binding constraint: sizing off height and letting
-     aspect-ratio derive the width fills the screen without ever cropping the
-     playfield. 100dvh (not vh) so the browser's collapsing toolbar can't push the
-     bottom of the arena — and the dash button — under the chrome. */
-  @media (pointer:coarse) and (orientation:landscape){
-    #stage{
-      width:auto;height:100vh;max-width:100vw;max-height:100vh;
-      height:100dvh;max-height:100dvh;
-      border-radius:0;box-shadow:none;
-    }
-    /* Full-bleed: a rounded, shadowed card wastes scarce vertical space here. */
-    #app{background:var(--ink);}
-    /* Pull the HUD in from the rounded corners the notch/curve tends to clip. */
-    .hp-wrap{left:14px;bottom:14px;width:min(240px,32vw);}
-    #dashBtn{right:16px;bottom:104px;width:64px;height:64px;font-size:12px;}
-    .topbar{top:10px;}
-    /* The sheet is a scroller inside a short viewport — keep it off both edges. */
-    .htp-shell{max-height:100vh;max-height:100dvh;}
-    .htp-sec{padding:13px 0;}
-    .htp-foot{padding:9px 22px 11px;}
+    /* The arena is not a scrollable surface: without this, dragging to aim pans
+       the page and fights the browser's pull-to-refresh. */
+    #stage,canvas#c{touch-action:none;}
   }
 
   /* ---- Portrait gate ----
@@ -357,15 +355,49 @@
   }
   .dash-fill{height:100%;width:100%;border-radius:6px;background:var(--yellow);transition:width .05s linear;}
 
-  #dashBtn{
-    position:absolute;right:24px;bottom:150px;width:74px;height:74px;border-radius:50%;
-    background:rgba(255,210,63,0.14);border:2px solid rgba(255,210,63,0.6);color:var(--yellow);
-    font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;
-    pointer-events:auto;display:none;
+  /* ---- Thumb controls (touch only) ----
+     Overlays the whole viewport so the stick and buttons can sit in the gutters
+     beside the 4:3 arena. The container never eats input; only the controls do. */
+  #touchControls{
+    position:absolute;inset:0;z-index:7;pointer-events:none;display:none;
+    touch-action:none;
   }
-  @media (pointer:coarse){ #dashBtn{ display:block; } }
-  #dashBtn:active{background:rgba(255,210,63,0.3);}
-  #dashBtn.notready{opacity:0.35;}
+  @media (pointer:coarse){ #touchControls:not(.hidden){ display:block; } }
+  #stick{
+    position:absolute;left:max(18px,env(safe-area-inset-left));bottom:22px;
+    width:128px;height:128px;border-radius:50%;
+    background:rgba(10,7,20,0.42);border:2px solid rgba(255,255,255,0.14);
+    pointer-events:auto;touch-action:none;
+    transition:background .12s, border-color .12s;
+  }
+  #stick.active{background:rgba(43,232,255,0.1);border-color:rgba(43,232,255,0.5);}
+  #stickKnob{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:56px;height:56px;border-radius:50%;
+    background:rgba(233,230,245,0.22);border:2px solid rgba(233,230,245,0.6);
+    /* No transition: the knob has to track the finger 1:1 or the stick feels laggy. */
+  }
+  #stick.active #stickKnob{background:rgba(43,232,255,0.3);border-color:var(--cyan);}
+  .tc-right{
+    position:absolute;right:max(18px,env(safe-area-inset-right));bottom:22px;
+    display:flex;align-items:flex-end;gap:12px;pointer-events:none;
+  }
+  #dashBtn,#boostBtn{
+    width:82px;height:82px;border-radius:50%;
+    font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;
+    pointer-events:auto;touch-action:none;
+  }
+  #dashBtn{
+    background:rgba(255,210,63,0.14);border:2px solid rgba(255,210,63,0.6);color:var(--yellow);
+  }
+  #dashBtn:active{background:rgba(255,210,63,0.32);}
+  #boostBtn{
+    background:rgba(43,232,255,0.12);border:2px solid rgba(43,232,255,0.55);color:var(--cyan);
+  }
+  #boostBtn.active,#boostBtn:active{background:rgba(43,232,255,0.32);}
+  /* Boost costs HP, so it greys out below the critical threshold — the same
+     signal the HUD's dash readout uses, for the same reason. */
+  #dashBtn.notready,#boostBtn.notready{opacity:0.32;}
 
   .topbar{
     position:absolute;top:18px;left:0;right:0;display:flex;justify-content:center;
@@ -505,7 +537,7 @@
   .lobby-countdown{text-align:center;padding:20px;}
   .countdown-number{font-family:'Syne',sans-serif;font-weight:800;font-size:64px;color:var(--cyan);}
   .countdown-label{font-size:13px;letter-spacing:3px;color:var(--dim);}
-  .lobby-actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .lobby-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
   .btn-ready-active{background:var(--cyan) !important;}
   .cosmetics-tabs{display:flex;gap:8px;flex-wrap:wrap;}
   .cos-tab{
@@ -716,6 +748,95 @@
     color:var(--magenta);text-transform:uppercase;max-width:34ch;line-height:1.7;
   }
   .end-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+  /* Last so it beats the base rules: backdrop-filter is a per-frame blur of
+     whatever is behind it — and what's behind these panels is the animating
+     canvas, so it re-blurs every frame. It's the most expensive thing in the HUD
+     on a phone GPU and the panels are already legible on their own translucent
+     fill. The -webkit- prefixed form is what Safari actually reads. */
+  @media (pointer:coarse){
+    .timer-pill,.alive-pill,#minimap,.toast,#spectate{
+      backdrop-filter:none;-webkit-backdrop-filter:none;
+    }
+  }
+
+  /* ---- Responsive overrides ----
+     These live at the very bottom on purpose. A media query adds no specificity,
+     so any rule here placed above the base rule it targets loses the cascade and
+     does nothing at all — which is what happened while this block sat with the
+     other @media rules near the top: 45 declarations were silently dead. Keep
+     them last. */
+  /* ---- Landscape on mobile ----
+     The arena is a fixed 4:3. In landscape a phone viewport is far wider than it
+     is tall, so height is the binding constraint: sizing off height and letting
+     aspect-ratio derive the width fills the screen without ever cropping the
+     playfield. 100dvh (not vh) so the browser's collapsing toolbar can't push the
+     bottom of the arena — and the dash button — under the chrome. */
+  @media (pointer:coarse) and (orientation:landscape){
+    #stage{
+      width:auto;height:100vh;max-width:100vw;max-height:100vh;
+      height:100dvh;max-height:100dvh;
+      border-radius:0;box-shadow:none;
+    }
+    /* Full-bleed: a rounded, shadowed card wastes scarce vertical space here. */
+    #app{background:var(--ink);}
+    /* HP/dash moves to the top-left: the bottom corners are the joystick's and
+       the action buttons' now, and a 330px-tall arena has no room for both. */
+    .hp-wrap{left:14px;top:52px;bottom:auto;width:min(200px,26vw);}
+    /* The whole arena is on screen at all times, so the minimap is decoration —
+       and the corner it wants is where the dash/boost buttons have to go. */
+    #minimap{display:none;}
+    /* The toast's default upper-middle slot is the band the HP/dash readout just
+       moved into, so it mirrors to the lower middle — clear of the readout above
+       and of the thumb controls, which sit out in the gutters beside the arena.
+       Sliding up on show instead of down keeps the motion away from the edge. */
+    .toast{top:auto;bottom:26%;}
+    .toast.show{transform:translate(-50%,-10px);}
+    .topbar{top:10px;}
+    /* The sheet is a scroller inside a short viewport — keep it off both edges. */
+    .htp-shell{max-height:100vh;max-height:100dvh;}
+    .htp-sec{padding:13px 0;}
+    .htp-foot{padding:9px 22px 11px;}
+    /* Clear of the thumb controls, which own the bottom of the screen. */
+    #spectate{bottom:auto;top:50%;transform:translate(-50%,-50%);}
+  }
+
+  /* ---- Short viewports ----
+     Height-driven, not orientation-driven: a phone in landscape and a stubby
+     desktop window have the same problem, which is that the menus are taller
+     than the screen. Everything here buys vertical space so the content fits
+     without scrolling — the overlay can still scroll if it doesn't. */
+  @media (max-height:520px){
+    .overlay{gap:8px;padding:12px 14px;}
+    .brand{font-size:clamp(30px,7vh,44px);}
+    .result-name{font-size:11px;}
+    .tag{font-size:11px;letter-spacing:1px;}
+    .rules{gap:6px 16px;margin-top:0;}
+    .rule{font-size:11px;}
+    .dot{width:10px;height:10px;}
+    .btn{font-size:14px;padding:10px 26px;}
+    .controls-hint{font-size:10px;}
+    /* The countdown owns the middle of the screen; at 150px it covered the arena
+       entirely and left no room for the "you are cyan" pill under it. */
+    .pm-count{font-size:clamp(44px,11vh,72px);}
+    .pm-ring{width:120px;height:120px;margin:-60px 0 0 -60px;}
+    #prematch{gap:8px;}
+    .pm-you{padding:5px 12px;font-size:12px;}
+    .pm-eyebrow,.pm-hint{font-size:10px;letter-spacing:3px;}
+    .end-actions{gap:8px;}
+  }
+
+  /* Thumb controls scale down with the screen so they can't cover the arena on a
+     small phone, and the HP readout gives way to them. */
+  @media (pointer:coarse) and (max-height:400px){
+    #stick{width:104px;height:104px;bottom:14px;}
+    #stickKnob{width:46px;height:46px;}
+    #dashBtn,#boostBtn{width:66px;height:66px;font-size:11px;}
+    .tc-right{bottom:14px;gap:9px;}
+    .hp-wrap{width:min(170px,24vw);}
+    .hp-label,.dash-label,.passive-label{font-size:9px;letter-spacing:1px;}
+    .alive-pill{padding:5px 11px;font-size:11px;top:10px;right:12px;}
+    .timer-pill{padding:5px 14px;font-size:12px;}
+  }
 </style>
 </head>
 <body>
@@ -745,7 +866,6 @@
     <canvas id="minimap"></canvas>
     <div class="toast" id="toast"></div>
     <div class="edge-warn" id="edgeWarn"></div>
-    <button id="dashBtn">DASH</button>
     <div id="spectate" class="hidden">
       <span class="spec-text">Eliminated · <b id="specAlive">2</b> still fighting</span>
       <button class="btn-leave" id="leaveBtn">Leave Match</button>
@@ -767,7 +887,8 @@
   <div class="overlay" id="startScreen">
     <div class="result-name">A FREE-FOR-ALL COLOR ARENA</div>
     <div class="brand">CHROMA<br>ROYALE</div>
-    <div class="tag">Aim with your mouse. The void is closing in. Only one color survives.</div>
+    <div class="tag desktop-only">Aim with your mouse. The void is closing in. Only one color survives.</div>
+    <div class="tag touch-only">Steer with the stick. The void is closing in. Only one color survives.</div>
     <div class="rules">
       <div class="rule"><span class="dot c"></span>Cyan<span class="arrow">beats</span><span class="dot m"></span>Magenta</div>
       <div class="rule"><span class="dot m"></span>Magenta<span class="arrow">beats</span><span class="dot y"></span>Yellow</div>
@@ -783,7 +904,8 @@
       <button class="btn ghost" id="howToBtn">How to Play</button>
       <button class="btn ghost" id="onlineBtn">Online</button>
     </div>
-    <div class="controls-hint">Mouse to move · Hold Click/Space to boost · Right-click/Shift to dash</div>
+    <div class="controls-hint desktop-only">Mouse to move · Hold Click/Space to boost · Right-click/Shift to dash</div>
+    <div class="controls-hint touch-only">Joystick to move · Hold BOOST to sprint · DASH to lunge</div>
   </div>
 
   <div class="overlay hidden" id="endScreen">
@@ -810,6 +932,18 @@
     <div class="controls-hint">Esc to resume</div>
   </div>
 
+</div>
+
+<!-- Thumb controls. Deliberately a sibling of #stage, not a child: #stage keeps a
+     4:3 aspect ratio, so on a 20:9 phone there are wide gutters either side of the
+     arena — exactly where thumbs rest, and outside the stage's overflow:hidden.
+     Shown only on touch devices, and only while a round is live (see setHudVisible). -->
+<div id="touchControls" class="hidden">
+  <div id="stick"><div id="stickKnob"></div></div>
+  <div class="tc-right">
+    <button id="boostBtn">BOOST</button>
+    <button id="dashBtn">DASH</button>
+  </div>
 </div>
 </div>
 
