@@ -2,6 +2,7 @@
 // Dynamically creates DOM elements for multiplayer features
 
 import { network } from './network.js';
+import { enterFullscreenIfTouch } from './ui.js';
 
 // RARITY_COLORS from cosmetics
 const RARITY_COLORS = {
@@ -187,6 +188,10 @@ function buildMatchmakingPanel() {
 
   // Find match (queue)
   document.getElementById('btn-find-match').addEventListener('click', () => {
+    // Fullscreen has to be asked for from inside a tap, and the match itself
+    // starts later from a server message — so it's requested here, at the last
+    // gesture before the round.
+    enterFullscreenIfTouch();
     network.joinQueue();
     showQueueUI();
   });
@@ -307,11 +312,13 @@ function buildLobbyPanel() {
 
   document.getElementById('btn-ready').addEventListener('click', () => {
     const ready = !network.isReady();
+    if(ready) enterFullscreenIfTouch();   // last tap before the host starts it
     network.setReady(ready);
     updateReadyButton(ready);
   });
 
   document.getElementById('btn-start-game').addEventListener('click', () => {
+    enterFullscreenIfTouch();
     network.startGame();
   });
 

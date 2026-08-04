@@ -1,5 +1,5 @@
 import {
-  COLORS, PASSIVES, GAME_DURATION, DASH_COOLDOWN, DASH_MIN_HP, CRIT_HP, dist2
+  COLORS, PASSIVES, GAME_DURATION, DASH_MIN_HP, CRIT_HP, TOUCH, dist2
 } from './utils.js';
 
 // ---------- UI refs ----------
@@ -8,11 +8,6 @@ const endScreen = document.getElementById('endScreen');
 const hud = document.getElementById('hud');
 const startBtn = document.getElementById('startBtn');
 const againBtn = document.getElementById('againBtn');
-const hpFill = document.getElementById('hpFill');
-const hpNum = document.getElementById('hpNum');
-const dashFill = document.getElementById('dashFill');
-const dashStateEl = document.getElementById('dashState');
-const passiveStateEl = document.getElementById('passiveState');
 const timerEl = document.getElementById('timer');
 const aliveCountEl = document.getElementById('aliveCount');
 const toastEl = document.getElementById('toast');
@@ -54,6 +49,29 @@ export const ui = {
 export function setHudVisible(visible){
   hud.classList.toggle('hidden', !visible);
   if(touchControls) touchControls.classList.toggle('hidden', !visible);
+}
+
+// ---------- fullscreen (touch only) ----------
+// A mobile browser's URL bar and nav bar eat 100-160px of a ~390px-tall landscape
+// viewport — a third of the screen, on the axis we have least of. Fullscreen gets
+// it back, and it also stops the address bar from sliding in and out mid-match and
+// re-laying out the arena under the player's thumbs.
+//
+// This has to be called from inside a real user gesture (tap), or the browser
+// rejects it. Failure is deliberately silent: iOS Safari has never supported
+// requestFullscreen on iPhone, so the rejection is expected on a whole platform
+// and there is nothing useful to say about it. 100dvh already keeps the layout
+// correct without it.
+export function enterFullscreenIfTouch(){
+  if(!TOUCH) return;
+  const el = document.documentElement;
+  if(document.fullscreenElement) return;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if(!req) return;
+  try {
+    const r = req.call(el, { navigationUI: 'hide' });
+    if(r && typeof r.catch === 'function') r.catch(() => {});
+  } catch(_){ /* older signatures reject the options object; not worth a retry */ }
 }
 
 // ---------- pause / in-match menu ----------
@@ -144,26 +162,11 @@ export function toast(msg){
 export function updateHUD(game){
   const player = game.player;
   const hp = Math.max(0, Math.round(player.hp));
-  hpNum.textContent = hp;
-  hpFill.style.width = hp+"%";
-  hpFill.style.background = COLORS[player.color];
-  hpFill.parentElement.classList.toggle('hp-crit', hp<=CRIT_HP);
 
-  passiveStateEl.textContent = PASSIVES[player.color].label;
-  passiveStateEl.style.color = COLORS[player.color];
-
+  // HP, the colour passive, and the dash bar used to be a DOM panel in the corner.
+  // They're on the canvas now — radius and rim for HP, a meter beside the blob for
+  // dash, the pre-match card for the passive — so nothing to update here.
   const dashReady = player.dashCooldown<=0 && player.hp>DASH_MIN_HP;
-  const dashMaxCd = DASH_COOLDOWN * PASSIVES[player.color].dashCdMult; // color-adjusted full cooldown
-  const dashPct = dashReady ? 100 : 100*(1 - player.dashCooldown/dashMaxCd);
-  dashFill.style.width = dashPct+"%";
-  dashStateEl.textContent = dashReady ? "READY!" : Math.ceil(player.dashCooldown*10)/10 + "s";
-  dashStateEl.classList.toggle('notready', !dashReady);
-  // retrigger the pulse animation on the rising edge of "ready"
-  if(dashReady && !wasDashReady){
-    dashStateEl.classList.remove('justready');
-    void dashStateEl.offsetWidth; // force reflow so the animation restarts
-    dashStateEl.classList.add('justready');
-  }
   wasDashReady = dashReady;
   dashBtn.classList.toggle('notready', !dashReady);
   // Boost is gated on hp > CRIT_HP in the physics, so grey the button out at the

@@ -29,7 +29,7 @@ const BOOST_DRAIN = 34;
 // Dash constants
 const DASH_SPEED = 1100;
 const DASH_DURATION = 0.18;
-const DASH_COOLDOWN = 3.2;
+const DASH_COOLDOWN = 4.0; // keep in sync with src/utils.js
 const DASH_HP_COST = 6;
 const DASH_MIN_HP = 12;
 const DASH_WINDUP_TIME = 0.12;

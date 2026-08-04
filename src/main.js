@@ -1,5 +1,5 @@
 import { Game } from './game.js';
-import { ui, showMainMenu } from './ui.js';
+import { ui, showMainMenu, enterFullscreenIfTouch } from './ui.js';
 import { showOnlineMenu, hideOnlineMenu, initOnlineUI, isOnlineMenuVisible } from './onlineUI.js';
 import { network } from './network.js';
 import { onlineGame } from './onlineGame.js';
@@ -44,8 +44,11 @@ network.onPlayerAway = (info) => onlineGame.onPlayerAway(info);
 
 // ---------- buttons ----------
 // One "again"/"leave" pair serves both modes, so route by which loop is live.
-ui.startBtn.addEventListener('click', () => game.startGame());
+// Every path that puts a player into a match also asks for fullscreen: it must
+// come from inside the tap to be allowed, so it can't live in startGame().
+ui.startBtn.addEventListener('click', () => { enterFullscreenIfTouch(); game.startGame(); });
 ui.againBtn.addEventListener('click', () => {
+  enterFullscreenIfTouch();  // a dropped fullscreen shouldn't stay dropped
   if (network.isInRoom()) showOnlineMenu();
   else game.startGame();
 });
@@ -97,7 +100,7 @@ document.getElementById('onlineBtn').addEventListener('click', () => {
   showOnlineMenu();
 });
 
-initHowTo(() => game.startGame());
+initHowTo(() => { enterFullscreenIfTouch(); game.startGame(); });
 document.getElementById('howToBtn').addEventListener('click', showHowTo);
 
 // Ask for landscape on touch devices. This is best-effort by design: the Screen

@@ -566,7 +566,10 @@ class ServerPhysics {
         dashDirY: e.dashDirY,
         iframes: e.iframes,
         stagger: e.stagger,
-        hitFlash: e.hitFlash
+        hitFlash: e.hitFlash,
+        // The client draws a dash meter on the local blob, and cooldown is
+        // authoritative here — without it the meter would read full forever.
+        dashCooldown: e.dashCooldown
       });
     }
     

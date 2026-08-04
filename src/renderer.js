@@ -1,5 +1,5 @@
 import { COLORS, PASSIVES, BEATS, WORLD_W, WORLD_H, BOX_R, CRIT_HP, MAX_SPEED, clamp, ZONE_WARN_TIME,
-         LOW_FX, DPR_CAP, fxShadow } from './utils.js';
+         LOW_FX, DPR_CAP, DASH_COOLDOWN, fxShadow } from './utils.js';
 
 // ---------- canvas ----------
 // The arena is a fixed 800x600 world, but the canvas is whatever size CSS gives
@@ -181,6 +181,122 @@ function cycleNodes(){
 
 // Eased so a blob skimming the panel edge can't strobe it between the two levels.
 let cycAlpha = CYC.baseAlpha;
+
+// ---------- matchup arrows ----------
+// A blob's colour decides whether touching it heals or hurts you, and that answer
+// changes every time either of you picks up a box. Reading it off the cycle guide
+// meant translating three colours into a rule mid-fight, so the answer is printed
+// on the blob instead: green up = you beat it, red down = it beats you.
+//
+// Same-colour matchups get no arrow. That pairing does no damage either way, so a
+// third glyph would be a symbol for "nothing happens" on every neutral blob on the
+// field — the absence reads as neutral more clearly than a marker would.
+// Deliberately larger than the 11px name beside it. This is the one glyph a
+// player has to read mid-fight, and on a 390px-tall phone the whole arena is
+// drawn at roughly half scale — sized to match the text it would have become a
+// 5px smudge there. Reading as slightly oversized on desktop is the cheaper
+// trade.
+const TRI_W = 13;   // world units
+const TRI_H = 10;
+const TRI_GAP = 4;  // breathing room between the name and the arrow
+const TRI_UP = "#43e57a";
+const TRI_DOWN = "#ff4d5e";
+
+// 'up' when the local player beats this blob, 'down' when it beats them, null when
+// there's no matchup to report (same colour, no local blob, or the local blob itself).
+function matchupVsLocal(e, localColor){
+  if(!localColor || e.isPlayer) return null;
+  if(e.color === localColor) return null;
+  return BEATS[localColor] === e.color ? 'up' : 'down';
+}
+
+function drawMatchupTri(ctx, cx, cy, dir){
+  const up = dir === 'up';
+  ctx.save();
+  ctx.beginPath();
+  if(up){
+    ctx.moveTo(cx, cy - TRI_H/2);
+    ctx.lineTo(cx + TRI_W/2, cy + TRI_H/2);
+    ctx.lineTo(cx - TRI_W/2, cy + TRI_H/2);
+  } else {
+    ctx.moveTo(cx, cy + TRI_H/2);
+    ctx.lineTo(cx + TRI_W/2, cy - TRI_H/2);
+    ctx.lineTo(cx - TRI_W/2, cy - TRI_H/2);
+  }
+  ctx.closePath();
+  const col = up ? TRI_UP : TRI_DOWN;
+  // Glow first, then a dark outline. The arena is full of neon, so an unlit
+  // triangle sits flat against it; the outline is what keeps green legible when
+  // it lands over a cyan blob and red over a magenta one.
+  fxShadow(ctx, col, 7);
+  ctx.fillStyle = col;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- dash meter ----------
+// Replaces the DOM dash bar. Pinned to the blob so your eyes never leave the
+// fight, and put on the *trailing* side so it sits in space you're moving away
+// from rather than over the ground you're about to cover.
+const DM_H = 26;        // world units
+const DM_W = 3.5;
+const DM_OFFSET = 9;    // gap from the blob's rim
+const DM_MIN_SPEED = 14; // below this the heading is noise, so the side is held
+
+// Which side the meter sits on, held per-entity so a blob drifting to a stop
+// doesn't leave it flipping between sides on velocity jitter.
+const dmSide = new WeakMap();
+
+function drawDashMeter(ctx, e){
+  const spd = Math.hypot(e.vx, e.vy);
+  let side = dmSide.get(e);
+  if(side === undefined) side = -1;
+  // Only re-pick while genuinely moving: the meter trails the blob, so it flips to
+  // whichever horizontal side you're moving away from.
+  if(spd > DM_MIN_SPEED) side = e.vx >= 0 ? -1 : 1;
+  dmSide.set(e, side);
+
+  const cd = e.dashCooldown || 0;
+  const maxCd = DASH_COOLDOWN * (PASSIVES[e.color] ? PASSIVES[e.color].dashCdMult : 1);
+  const ready = cd <= 0;
+  const frac = ready ? 1 : clamp(1 - cd/maxCd, 0, 1);
+
+  const x = e.x + side * (e.radius + DM_OFFSET);
+  const top = e.y - DM_H/2;
+
+  ctx.save();
+  ctx.shadowBlur = 0;
+  // track
+  ctx.fillStyle = "rgba(255,255,255,0.14)";
+  roundRectPath(ctx, x - DM_W/2, top, DM_W, DM_H, DM_W/2);
+  ctx.fill();
+  // fill grows from the bottom up, so "full" reads as charged
+  if(frac > 0){
+    const fh = DM_H * frac;
+    ctx.fillStyle = ready ? COLORS[e.color] : "rgba(255,255,255,0.45)";
+    if(ready) fxShadow(ctx, COLORS[e.color], 8);
+    roundRectPath(ctx, x - DM_W/2, top + (DM_H - fh), DM_W, fh, DM_W/2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Small helper so the meter's rounded ends don't depend on ctx.roundRect, which
+// isn't in every browser this runs on.
+function roundRectPath(ctx, x, y, w, h, r){
+  const rr = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
 
 // Below this scale the guide is worse than nothing. Its labels are 8.5px and 6.5px
 // in *world* units, so at the ~0.65 scale a phone gives the arena in landscape they
@@ -429,6 +545,11 @@ export function render(game){
   ctx.globalAlpha = 1;
 
   // entities (player + bots only; boxes drawn above)
+  // The local blob's colour decides every matchup arrow drawn this frame, so it's
+  // resolved once here rather than re-found per entity. Null while spectating a
+  // dead player, which reads as "no arrows" — there's no matchup to report.
+  const localEnt = entities.find(e => e.isPlayer && e.alive);
+  const localColor = localEnt ? localEnt.color : null;
   for(const e of entities){
     if(e.kind === 'box') continue;
     if(!e.alive){
@@ -546,8 +667,27 @@ export function render(game){
       ctx.fillStyle = "rgba(255,255,255,0.55)";
       ctx.textAlign = "center";
       ctx.shadowBlur = 0;
-      ctx.fillText(e.name, e.x, e.y - e.radius - 8);
+      const tagY = e.y - e.radius - 8;
+      // The matchup marker sits beside the name rather than replacing it, so the
+      // name still reads as the label and the arrow as an annotation on it. Both
+      // are centred as one unit: measure the name, shift the text left by half
+      // the arrow's footprint, and hang the arrow off its right edge.
+      const arrow = matchupVsLocal(e, localColor);
+      if(arrow){
+        const nameW = ctx.measureText(e.name).width;
+        const shift = (TRI_W + TRI_GAP) / 2;
+        ctx.fillText(e.name, e.x - shift, tagY);
+        drawMatchupTri(ctx, e.x - shift + nameW/2 + TRI_GAP, tagY - TRI_H/2 - 1, arrow);
+      } else {
+        ctx.fillText(e.name, e.x, tagY);
+      }
     }
+
+    // Dash meter — a short vertical bar pinned to the blob's trailing side, so it
+    // rides behind the direction of travel and never covers the ground you're
+    // about to move into. Only the local player gets one: it's a readout of your
+    // own resource, and four of them would just be clutter.
+    if(e.isPlayer && !e.dead) drawDashMeter(ctx, e);
   }
 
   // spawn marker — makes it obvious which blob is yours at the start of a round.

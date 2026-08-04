@@ -110,8 +110,14 @@
     .touch-only{display:block;}
   }
 
-  /* How to Play — a scrolling sheet inside the arena, built by src/howto.js */
-  #howToScreen{gap:0;justify-content:flex-start;background:rgba(5,6,10,0.96);}
+  /* How to Play — a scrolling sheet inside the arena, built by src/howto.js.
+     Fully opaque: at 0.96 the start screen behind it (brand wordmark, tagline,
+     the three menu buttons) showed straight through the sheet and tangled with
+     the text on top of it. There is nothing worth seeing behind this panel. */
+  #howToScreen{gap:0;justify-content:flex-start;background:var(--ink);}
+  /* The shell is the overlay's only child, so it inherits the start screen's
+     `margin:auto` centring rules. It manages its own height instead. */
+  #howToScreen > .htp-shell{margin:0;}
   .htp-shell{
     display:flex;flex-direction:column;width:100%;height:100%;
     text-align:left;padding:0;box-sizing:border-box;
@@ -317,43 +323,6 @@
 
   /* HUD */
   #hud{position:absolute;inset:0;pointer-events:none;z-index:5;font-family:'JetBrains Mono',monospace;}
-  .hp-wrap{
-    position:absolute;left:20px;bottom:20px;width:min(320px,40vw);
-  }
-  .hp-label{font-size:11px;letter-spacing:2px;color:var(--dim);margin-bottom:6px;display:flex;justify-content:space-between;}
-  .hp-track{
-    width:100%;height:14px;background:rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;
-    border:1px solid rgba(255,255,255,0.08);
-  }
-  .hp-fill{height:100%;width:100%;border-radius:8px;transition:width .12s linear, background .2s linear;}
-  .hp-crit{
-    animation:pulseCrit 0.7s infinite;
-  }
-  @keyframes pulseCrit{
-    0%,100%{box-shadow:0 0 0 rgba(255,60,60,0);}
-    50%{box-shadow:0 0 22px rgba(255,60,60,0.55);}
-  }
-
-  .dash-label{font-size:11px;letter-spacing:2px;color:var(--dim);margin:10px 0 6px;display:flex;justify-content:space-between;}
-  #dashState{color:var(--yellow);}
-  #dashState.notready{color:#4b4768;}
-  #dashState.justready{animation:dashReadyPulse 0.5s ease-out;}
-  @keyframes dashReadyPulse{
-    0%{transform:scale(1);text-shadow:0 0 0 var(--yellow);}
-    40%{transform:scale(1.35);text-shadow:0 0 16px var(--yellow);}
-    100%{transform:scale(1);text-shadow:0 0 0 var(--yellow);}
-  }
-  #dashState{display:inline-block;}
-  .passive-label{
-    font-size:11px;letter-spacing:2px;color:var(--dim);margin:10px 0 0;
-    display:flex;justify-content:space-between;
-  }
-  #passiveState{color:var(--paper);font-weight:700;}
-  .dash-track{
-    width:100%;height:8px;background:rgba(255,255,255,0.06);border-radius:6px;overflow:hidden;
-    border:1px solid rgba(255,255,255,0.08);
-  }
-  .dash-fill{height:100%;width:100%;border-radius:6px;background:var(--yellow);transition:width .05s linear;}
 
   /* ---- Thumb controls (touch only) ----
      Overlays the whole viewport so the stick and buttons can sit in the gutters
@@ -779,23 +748,22 @@
     }
     /* Full-bleed: a rounded, shadowed card wastes scarce vertical space here. */
     #app{background:var(--ink);}
-    /* HP/dash moves to the top-left: the bottom corners are the joystick's and
-       the action buttons' now, and a 330px-tall arena has no room for both. */
-    .hp-wrap{left:14px;top:52px;bottom:auto;width:min(200px,26vw);}
+    /* HP/dash moved onto the canvas (blob radius + the meter beside it), so the
+       corner panel this used to reposition no longer exists. */
     /* The whole arena is on screen at all times, so the minimap is decoration —
        and the corner it wants is where the dash/boost buttons have to go. */
     #minimap{display:none;}
-    /* The toast's default upper-middle slot is the band the HP/dash readout just
-       moved into, so it mirrors to the lower middle — clear of the readout above
-       and of the thumb controls, which sit out in the gutters beside the arena.
-       Sliding up on show instead of down keeps the motion away from the edge. */
+    /* The toast's default upper-middle slot sits right where the round timer is,
+       so it mirrors to the lower middle — clear of the topbar above and of the
+       thumb controls, which sit out in the gutters beside the arena. Sliding up
+       on show instead of down keeps the motion away from the edge. */
     .toast{top:auto;bottom:26%;}
     .toast.show{transform:translate(-50%,-10px);}
     .topbar{top:10px;}
-    /* The sheet is a scroller inside a short viewport — keep it off both edges. */
+    /* The sheet is a scroller inside a short viewport — keep it off both edges.
+       Its type/padding compaction lives in the max-height:520px block below,
+       which covers a stubby desktop window too. */
     .htp-shell{max-height:100vh;max-height:100dvh;}
-    .htp-sec{padding:13px 0;}
-    .htp-foot{padding:9px 22px 11px;}
     /* Clear of the thumb controls, which own the bottom of the screen. */
     #spectate{bottom:auto;top:50%;transform:translate(-50%,-50%);}
   }
@@ -823,17 +791,43 @@
     .pm-you{padding:5px 12px;font-size:12px;}
     .pm-eyebrow,.pm-hint{font-size:10px;letter-spacing:3px;}
     .end-actions{gap:8px;}
+
+    /* ---- How to Play on a short screen ----
+       The sheet is header + scroller + footer, and the header and footer are
+       fixed while only the scroller flexes. At 390px tall the default header
+       (a clamp(22px,4vw,34px) title that wraps to two or three lines once the
+       Back button squeezes it) plus the footer took 180px of 390px, leaving a
+       186px slit to read 1300px of content through. Shrinking the chrome is
+       what buys the content room, so: one-line title, tighter padding, and a
+       footer that can't wrap. */
+    .htp-title{font-size:clamp(15px,3.4vh,22px);white-space:nowrap;}
+    .htp-head{padding:9px 14px 7px;gap:10px;align-items:center;}
+    .htp-head .result-name{display:none;}  /* "30 seconds to learn" is flavour */
+    .htp-scroll{padding:2px 14px 10px;}
+    .htp-sec{padding:11px 0;}
+    .htp-h{font-size:15px;}
+    .htp-eyebrow{font-size:9px;letter-spacing:2px;}
+    .htp-p{font-size:11.5px;line-height:1.5;margin-bottom:8px;}
+    .htp-fact b{font-size:17px;}
+    .htp-fact{padding:7px 11px;}
+    .htp-bullet,.htp-key,.htp-k,.htp-v{font-size:11.5px;}
+    .htp-foot{padding:7px 14px 8px;gap:10px;flex-wrap:nowrap;}
+    /* The <=560px phone block above sets width:100% and a 44px tap target for
+       portrait. In landscape that stacks the button and hint into two rows and
+       spends height we don't have, so the button goes back to hugging its text.
+       Still 36px tall, which stays comfortably tappable. */
+    .htp-foot .btn{font-size:12px;padding:8px 18px;width:auto;min-height:36px;}
+    .htp-x{min-height:32px;padding:6px 14px;font-size:11px;}
+    .htp-hint{font-size:9.5px;}
   }
 
   /* Thumb controls scale down with the screen so they can't cover the arena on a
-     small phone, and the HP readout gives way to them. */
+     small phone. */
   @media (pointer:coarse) and (max-height:400px){
     #stick{width:104px;height:104px;bottom:14px;}
     #stickKnob{width:46px;height:46px;}
     #dashBtn,#boostBtn{width:66px;height:66px;font-size:11px;}
     .tc-right{bottom:14px;gap:9px;}
-    .hp-wrap{width:min(170px,24vw);}
-    .hp-label,.dash-label,.passive-label{font-size:9px;letter-spacing:1px;}
     .alive-pill{padding:5px 11px;font-size:11px;top:10px;right:12px;}
     .timer-pill{padding:5px 14px;font-size:12px;}
   }
@@ -856,13 +850,11 @@
   <div id="hud" class="hidden">
     <div class="topbar"><div class="timer-pill" id="timer">01:00</div></div>
     <div class="alive-pill">ALIVE <b id="aliveCount">4</b></div>
-    <div class="hp-wrap">
-      <div class="hp-label"><span>HULL</span><span id="hpNum">100</span></div>
-      <div class="hp-track"><div class="hp-fill" id="hpFill" style="background:var(--cyan)"></div></div>
-      <div class="passive-label"><span>PASSIVE</span><span id="passiveState">+15% SPEED</span></div>
-      <div class="dash-label"><span>DASH</span><span id="dashState">READY</span></div>
-      <div class="dash-track"><div class="dash-fill" id="dashFill"></div></div>
-    </div>
+    <!-- No HP or dash panel here on purpose. HP is already legible from the blob:
+         the radius scales with it and a red rim marks critical. Dash is drawn on
+         the canvas beside the blob (see renderer.drawDashMeter), so both readouts
+         sit where the player is already looking instead of in a corner they have
+         to glance away to. -->
     <canvas id="minimap"></canvas>
     <div class="toast" id="toast"></div>
     <div class="edge-warn" id="edgeWarn"></div>
