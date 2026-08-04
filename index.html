@@ -74,6 +74,34 @@
   }
   .tag{color:var(--dim);font-size:14px;letter-spacing:2px;text-transform:uppercase;max-width:520px;}
 
+  /* Result/pause headings. These were inline `clamp(36px,7vw,64px)` on the
+     elements, which meant the short-viewport .brand rule below could never
+     apply — an inline style outranks any stylesheet selector. On a landscape
+     phone that left "ELIMINATED" at the full 64px, wider than the screen, and
+     the ends of the word were simply cut off.
+
+     Sizing against vw is the deeper mistake: a 1600x740 landscape phone is
+     *wide*, so vw hands out a huge size on exactly the layout with the least
+     room to spare. vmin tracks the smaller axis instead, so rotating the
+     device shrinks the heading rather than growing it.
+
+     The 8.2vw ceiling is what actually guarantees the fit, and it is applied
+     with no floor under it. A minimum would quietly win on a narrow screen and
+     reintroduce the overflow — a 30px floor did exactly that, putting
+     "ELIMINATED" at 120% of the viewport again. Letting the text get genuinely
+     small on a narrow window is the price of never clipping it. 8.2vw fits the
+     longest string the screen can show ("ELIMINATED", ~10 wide glyphs of Syne
+     800) with a little margin.
+
+     Doubled up as `.brand.brand-sm` so it outranks the plain `.brand` override
+     in the max-height:520px block further down. Both are a single class, so
+     with one class here that later rule wins on source order alone and puts the
+     heading back at 7vh — 36px on a 520px-tall window, which is the size that
+     overflowed. */
+  .brand.brand-sm{
+    font-size:min(7vmin, 8.2vw);
+  }
+
   .rules{
     display:flex;gap:28px;flex-wrap:wrap;justify-content:center;max-width:640px;
     margin-top:4px;
@@ -819,6 +847,33 @@
     .htp-foot .btn{font-size:12px;padding:8px 18px;width:auto;min-height:36px;}
     .htp-x{min-height:32px;padding:6px 14px;font-size:11px;}
     .htp-hint{font-size:9.5px;}
+
+    /* ---- Online panel on a short screen ----
+       Same structure as How to Play (fixed header + scroller + fixed footer)
+       and it was missed when that got its short-screen pass. Everything inside
+       was fixed px sized for a tall window: a 22px title, an 18px FIND MATCH
+       with 16px of vertical padding, and 24-28px of panel padding. On a
+       landscape phone that chrome pushed the create-room row past the bottom
+       of the scroller, so "Open Room" was cut in half.
+
+       88vh is also the wrong ceiling here — it leaves 12vh of a 740px viewport
+       unused while the content is clipped, so the panel is allowed to grow and
+       the scroller takes the pressure instead. The width comes down as well:
+       560px on a landscape phone is most of the screen for a menu holding two
+       short button rows, which is what made it read as oversized. */
+    .online-menu-inner{max-height:94vh;width:min(440px,88vw);}
+    .online-header{padding:12px 16px 0;gap:9px;}
+    .online-title{font-size:16px;letter-spacing:2px;}
+    .tab-btn{font-size:11px;padding:5px 13px;}
+    .online-content{padding:9px 16px;}
+    .online-footer-bar{padding:8px 16px;gap:9px;}
+    .online-footer-stats{font-size:11px;gap:12px;}
+    .btn-back{font-size:11px;padding:5px 13px;}
+    .btn-primary{font-size:13px;padding:8px 22px;}
+    .btn-large{font-size:14px;padding:10px 26px;}
+    .btn-secondary{font-size:12px;padding:7px 15px;}
+    .matchmaking-content,.lobby-content,.cosmetics-content,.stats-content{gap:8px;}
+    .matchmaking-or{font-size:11px;}
   }
 
   /* Thumb controls scale down with the screen so they can't cover the arena on a
@@ -902,7 +957,7 @@
 
   <div class="overlay hidden" id="endScreen">
     <div class="result-name" id="endEyebrow">ROUND OVER</div>
-    <div class="brand" id="endTitle" style="font-size:clamp(36px,7vw,64px);">YOU SURVIVED</div>
+    <div class="brand brand-sm" id="endTitle">YOU SURVIVED</div>
     <div class="tag" id="endSub">Last color standing.</div>
     <div class="end-actions">
       <button class="btn" id="againBtn">Play Again</button>
@@ -912,7 +967,7 @@
 
   <div class="overlay hidden" id="pauseScreen">
     <div class="result-name">Match in progress</div>
-    <div class="brand" style="font-size:clamp(36px,7vw,64px);">PAUSED</div>
+    <div class="brand brand-sm">PAUSED</div>
     <div class="tag" id="pauseSub">The arena is frozen. Take your time.</div>
     <div class="end-actions">
       <button class="btn" id="resumeBtn">Resume</button>
