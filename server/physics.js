@@ -13,7 +13,7 @@ const {
   STAGGER_DURATION, STAGGER_THRESHOLD, STAGGER_ACCEL_MULT,
   PLAYER_R_MIN, PLAYER_R_MAX,
   BEATS, COLOR_KEYS, PASSIVES,
-  CORNERS, BOX_COUNT, BOX_R,
+  CORNERS, BOX_COUNT, BOX_CYCLE, BOX_R,
   SAFE_R0, SAFE_R1, SHRINK_START, GAME_DURATION,
   SUDDEN_DEATH_SHRINK, SUDDEN_DEATH_MIN_R, zoneCenterAt
 } = require('./constants.js');
@@ -26,6 +26,14 @@ function radiusForHp(hp) {
   return PLAYER_R_MIN + (PLAYER_R_MAX - PLAYER_R_MIN) * t;
 }
 function easeInOut(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+
+// Duplicate of makeBoxCycle in src/utils.js — keep in sync. One box per colour
+// per cycle, each at its own random moment, sorted so the caller can pop the head.
+function makeBoxCycle() {
+  return COLOR_KEYS
+    .map(color => ({ color, at: rand(0, BOX_CYCLE) }))
+    .sort((a, b) => a.at - b.at);
+}
 
 class ServerEntity {
   constructor(id, playerId, isPlayer, name, spawnIndex) {
@@ -118,13 +126,17 @@ class ServerPhysics {
   
   _initializeBoxes() {
     this.boxes = [];
+    // Mirrors the client: whole colour sets, so the opening arena is balanced
+    // rather than whatever independent rolls happened to produce.
     for (let i = 0; i < BOX_COUNT; i++) {
       this.boxes.push({
         x: rand(40, WORLD_W - 40),
         y: rand(40, WORLD_H - 40),
-        color: COLOR_KEYS[Math.floor(Math.random() * 3)]
+        color: COLOR_KEYS[i % COLOR_KEYS.length]
       });
     }
+    this.boxT = 0;
+    this.boxQueue = makeBoxCycle();
   }
   
   getSpawnPositions() {
@@ -147,7 +159,7 @@ class ServerPhysics {
     this._updatePhysics(dt);
     this._checkCollisions();
     this._updateBoxes(dt);
-    this._respawnBoxes();
+    this._respawnBoxes(dt);
     this._updateTimers(dt);
   }
   
@@ -497,13 +509,23 @@ class ServerPhysics {
     this.boxes = this.boxes.filter(b => !b._dead);
   }
   
-  _respawnBoxes() {
-    while (this.boxes.length < BOX_COUNT) {
+  // Authoritative twin of the client's spawnSystem — same cycle, same cap, same
+  // drop-when-full rule, so a predicting client and the server agree on how many
+  // boxes should exist even though the random positions only come from here.
+  _respawnBoxes(dt) {
+    this.boxT += dt;
+    while (this.boxQueue.length && this.boxQueue[0].at <= this.boxT) {
+      const { color } = this.boxQueue.shift();
+      if (this.boxes.length >= BOX_COUNT) continue;
       this.boxes.push({
         x: rand(40, WORLD_W - 40),
         y: rand(40, WORLD_H - 40),
-        color: COLOR_KEYS[Math.floor(Math.random() * 3)]
+        color
       });
+    }
+    if (this.boxT >= BOX_CYCLE) {
+      this.boxT -= BOX_CYCLE;
+      this.boxQueue = makeBoxCycle();
     }
   }
   

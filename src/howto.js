@@ -12,7 +12,7 @@
 // guide with it — never type a game value into this markup.
 import {
   COLORS, PASSIVES, BEATS,
-  BOT_COUNT, BOX_COUNT, GAME_DURATION,
+  BOT_COUNT, BOX_COUNT, BOX_CYCLE, GAME_DURATION,
   BOOST_MULT, BOOST_DRAIN,
   DASH_COOLDOWN, DASH_HP_COST,
   HIT_DMG_ADV, HIT_DMG_DISADV, HIT_LIFESTEAL_RATIO,
@@ -123,7 +123,8 @@ function survivalHtml(){
     bullet(`<b>Cruising is free.</b> Anything faster costs HP.`),
     bullet(`<b>HP is your size too.</b> Hurt blobs shrink and fly further.`),
     bullet(`<b>Below ${CRIT_HP} HP</b> boost cuts out.`),
-    bullet(`<b>${BOX_COUNT} boxes</b> in the arena. Each heals <b>+18 HP</b>.`, COLORS.yellow)
+    bullet(`<b>Up to ${BOX_COUNT} boxes</b> in the arena. Each heals <b>+18 HP</b>.`, COLORS.yellow),
+    bullet(`<b>All three colours</b> spawn every ${BOX_CYCLE}s, so the one you need is never far off.`, COLORS.yellow)
   ]);
 }
 

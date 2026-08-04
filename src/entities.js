@@ -87,13 +87,15 @@ export function makeEntity(isPlayer, name, spawnIndex, difficulty = 'medium'){
   };
 }
 
-// pickups are entities too (kind:'box')
-export function makeBox(){
+// pickups are entities too (kind:'box'). The colour is passed in rather than
+// rolled here: the spawn cycle owns which colour comes next (see BOX_CYCLE), so
+// choosing one locally would defeat the per-window guarantee.
+export function makeBox(color){
   return {
     kind: 'box',
     x: rand(40, WORLD_W-40),
     y: rand(40, WORLD_H-40),
-    color: COLOR_KEYS[Math.floor(rand(0,3))],
+    color: color || COLOR_KEYS[Math.floor(rand(0,3))],
     spin: rand(0,Math.PI*2)
   };
 }

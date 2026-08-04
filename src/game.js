@@ -1,5 +1,5 @@
 import {
-  COLORS, WORLD_W, WORLD_H, BOT_COUNT, BOX_COUNT, BOX_R,
+  COLORS, COLOR_KEYS, WORLD_W, WORLD_H, BOT_COUNT, BOX_COUNT, BOX_CYCLE, BOX_R, makeBoxCycle,
   SAFE_R0, DARK_DRAIN, NAME_POOL, rand, dist2, clamp, radiusForHp,
   ensureAudio, getAudioCtx, FIXED_DT, MAX_FRAME_DT, playCountdownTick
 } from './utils.js';
@@ -43,6 +43,11 @@ export class Game {
     this.safeR = SAFE_R0;
     this.center = {x:WORLD_W/2, y:WORLD_H/2};
     this.animId = null;
+
+    // box spawn cycle — resetGame deals the real queue, these are just so the
+    // fields exist before the first round is set up.
+    this.boxT = 0;
+    this.boxQueue = [];
 
     // pre-match countdown + spawn marker
     this.countdown = 0;      // >0 = sim frozen, overlay counting down
@@ -156,8 +161,14 @@ export class Game {
       usedNames.add(nm);
       this.em.add(makeEntity(false, nm, spawnOrder[i+1], this.aiDifficulty));
     }
-    for(let i=0;i<BOX_COUNT;i++) this.em.add(makeBox());
-    
+    // The arena still opens stocked — waiting out a cycle for the first pickup
+    // would leave the opening seconds with nothing to contest. Deal the initial
+    // fill in whole colour sets so it starts balanced too, which the old
+    // independent rolls didn't guarantee (a 10-box fill could open 6-1-3).
+    for(let i=0;i<BOX_COUNT;i++) this.em.add(makeBox(COLOR_KEYS[i % COLOR_KEYS.length]));
+    this.boxT = 0;
+    this.boxQueue = makeBoxCycle();
+
     this.events.emit(EventType.ROUND_RESET, {});
   }
 
@@ -255,13 +266,24 @@ export class Game {
     }
   }
 
-  // SpawnSystem — keep the arena topped up to BOX_COUNT pickups.
-  spawnSystem(){
-    let count = this.em.boxes().length;
-    while(count < BOX_COUNT){ 
-      const box = this.em.add(makeBox());
-      count++;
+  // SpawnSystem — releases the current cycle's boxes as their offsets come due.
+  //
+  // The BOX_COUNT cap still holds, but it's now a ceiling rather than a target:
+  // a due box is dropped, not deferred, when the arena is already full. Holding
+  // it back would let a busy round bank a queue of spawns and then dump them all
+  // at once the moment someone eats one, which is the burst the fixed rate exists
+  // to prevent. The colour still gets its turn again next cycle.
+  spawnSystem(dt){
+    this.boxT += dt;
+    while(this.boxQueue.length && this.boxQueue[0].at <= this.boxT){
+      const { color } = this.boxQueue.shift();
+      if(this.em.boxes().length >= BOX_COUNT) continue;
+      const box = this.em.add(makeBox(color));
       this.events.emit(EventType.PICKUP_SPAWN, { entityId: box.id, x: box.x, y: box.y, color: box.color });
+    }
+    if(this.boxT >= BOX_CYCLE){
+      this.boxT -= BOX_CYCLE;
+      this.boxQueue = makeBoxCycle();
     }
   }
 
@@ -340,7 +362,7 @@ export class Game {
     updateZone(this, dt);
     this.movementSystem(dt);
     this.pickupSystem();
-    this.spawnSystem();
+    this.spawnSystem(dt);
     this.combatSystem();
 
     // fx update

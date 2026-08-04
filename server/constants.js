@@ -16,6 +16,7 @@ const SAFE_R0 = 460;
 const SAFE_R1 = 90;
 const MAX_PLAYERS = 4;
 const BOX_COUNT = 10;
+const BOX_CYCLE = 5.0; // seconds; one box per colour per cycle — keep in sync with src/utils.js
 const BOX_R = 10;
 
 // Physics constants
@@ -149,6 +150,7 @@ module.exports = {
   SAFE_R1,
   MAX_PLAYERS,
   BOX_COUNT,
+  BOX_CYCLE,
   BOX_R,
   MAX_SPEED,
   ACCEL,

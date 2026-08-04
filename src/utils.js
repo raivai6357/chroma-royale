@@ -18,7 +18,17 @@ export const SAFE_R0 = 460;
 export const SAFE_R1 = 90;
 export const SHRINK_START = 6; // seconds before shrink begins
 export const BOT_COUNT = 3; // + the player = 4 total
-export const BOX_COUNT = 10;
+export const BOX_COUNT = 10; // arena cap — the spawn cycle below never exceeds it
+// Boxes used to reappear the instant one was eaten, with an independent random
+// colour each. Two problems: a pickup was never a thing you could anticipate, and
+// independent rolls let a colour vanish for a long stretch by luck, which quietly
+// strands whoever needed it to complete a matchup.
+//
+// Instead one box of *each* colour spawns per cycle, at three independent random
+// moments inside it. Every colour is guaranteed once per window, so the arena
+// can't drift colour-blind, while the timing stays unpredictable.
+export const BOX_CYCLE = 5.0;   // seconds per cycle; one box per colour per cycle
+
 export const MAX_SPEED = 120; // px/sec cruising speed cap — slow by default
 export const ACCEL = 1250; // px/sec^2 — how fast you build up to max speed
 export const DRAG = 2.6; // higher = less drift, lower = more momentum/slide
@@ -226,6 +236,21 @@ export function radiusForHp(hp){
   return PLAYER_R_MIN + (PLAYER_R_MAX-PLAYER_R_MIN)*t;
 }
 export function easeInOut(x){ return x<0.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2; }
+
+// ---------- box spawn cycle ----------
+// One cycle's worth of spawns: each colour exactly once, each at its own random
+// moment inside the window. Returned sorted by time, so a caller can just pop
+// the front while `t` passes the head's offset.
+//
+// The offsets are drawn independently rather than dealt one per third of the
+// window: sub-slotting would make the rhythm learnable ("a box is due about
+// now"), and the point of randomising is that it isn't. Two colours landing
+// within a few hundred ms of each other is a legitimate outcome, not a bug.
+export function makeBoxCycle(){
+  return COLOR_KEYS
+    .map(color => ({ color, at: rand(0, BOX_CYCLE) }))
+    .sort((a,b) => a.at - b.at);
+}
 
 // ---------- audio ----------
 // Tiny synthesized SFX — no assets. Created lazily on first user gesture.
