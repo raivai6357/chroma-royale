@@ -8,6 +8,7 @@ import { spawnSpark, spawnBurst } from './combat.js';
 import { render } from './renderer.js';
 import { input, consumeDash, aimDir, releaseInputs } from './input.js';
 import { network } from './network.js';
+import { profile } from './profile.js';
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
          showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu,
          setHudVisible } from './ui.js';
@@ -161,6 +162,9 @@ export class OnlineGame {
 
   // network.onGameEnd — data: { winner, winnerPlayerId, survivors, stats }
   end(data){
+    // Load-bearing beyond just avoiding a double render: coins are awarded below,
+    // and the server can send game_end more than once (a late broadcast racing a
+    // reconnect). Without this guard a round could pay out twice.
     if(!this.running && this.ended) return;
     this.running = false;
     this.ended = true;
@@ -204,6 +208,26 @@ export class OnlineGame {
         ? winnerName + " took the arena. Back to the lobby for another run."
         : "Nobody made it out. The void takes all.";
     }
+
+    // Bank the round. stats is keyed by playerId (server/rooms.js:359), not by
+    // entity id — the two are different namespaces and mixing them silently
+    // awards zero. `survived` is already computed above from survivors[], so a
+    // death is simply not surviving.
+    const mine = (data && data.stats && data.stats[this.myPlayerId]) || {};
+    const earned = profile.recordGameResult({
+      won,
+      kills: mine.kills || 0,
+      deaths: survived ? 0 : 1,
+      damageDealt: mine.damageDealt || 0,
+      damageTaken: mine.damageTaken || 0,
+      playTime: this.elapsed
+    });
+
+    // Show it on the end screen. Previously a round's earnings were invisible
+    // until the player reopened the online menu and noticed a bigger number.
+    let reward = ` +${earned.coinsGained} coins, +${earned.xpGained} XP.`;
+    if(earned.leveledUp) reward += ` Level ${earned.newLevel}!`;
+    ui.endSub.textContent += reward;
   }
 
   // Torn connection / left the room mid-round — stop the loop without pretending

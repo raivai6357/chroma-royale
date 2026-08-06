@@ -13,6 +13,7 @@ import { input, consumeDash, setupInput, aimDir, releaseInputs } from './input.j
 import { ui, toast, updateHUD, resetHUD, showPrematch, setPrematchCount, hidePrematch,
          showSpectate, updateSpectate, hideSpectate, showPause, hidePause, showMainMenu,
          setHudVisible } from './ui.js';
+import { profile } from './profile.js';
 
 // pre-match countdown: 3 · 2 · 1 · GO. The sim is frozen for all of it, so the
 // arena renders (and the spawn marker is visible) before anyone can move.
@@ -104,6 +105,11 @@ export class Game {
     
     this.events.on(EventType.KILL, (data) => {
       spawnBurst(this, data.x, data.y, COLORS[data.color]);
+      // Void deaths (game.js:237) carry no killerId, so this only counts kills
+      // the player actually landed — starving a rival into the zone doesn't pay.
+      if(data.killerId !== undefined && this.player && data.killerId === this.player.id){
+        this.kills++;
+      }
     });
     
     this.events.on(EventType.PICKUP_COLLECT, (data) => {
@@ -136,6 +142,10 @@ export class Game {
     this.paused = false;
     hidePause();
     hideSpectate();
+    // Kills the local player scored this round, for the offline coin award in
+    // endGame(). Reset here rather than in the constructor so a second round in
+    // the same session doesn't pay out for the first one again.
+    this.kills = 0;
     this.elapsed = 0;
     this.safeR = SAFE_R0;
     this.center = {x:WORLD_W/2, y:WORLD_H/2};
@@ -485,6 +495,24 @@ export class Game {
         ? survivors.length + " still standing. Drop back in and try again."
         : "Nobody made it out. The void takes all.";
     }
+    // Offline rounds pay at the same rate as online ones, so the shop is
+    // reachable without ever touching multiplayer. Awarded here and NOT in
+    // leaveMatch() or quitToMenu(): those can be triggered at will, and paying
+    // out on them turns "start a round, quit immediately" into a coin farm.
+    // Damage is passed as 0 rather than threading a counter through combat.js
+    // for a stat that only shows on the stats panel.
+    const earned = profile.recordGameResult({
+      won: this.player.alive,
+      kills: this.kills || 0,
+      deaths: this.player.alive ? 0 : 1,
+      damageDealt: 0,
+      damageTaken: 0,
+      playTime: this.elapsed
+    });
+    let reward = ` +${earned.coinsGained} coins, +${earned.xpGained} XP.`;
+    if(earned.leveledUp) reward += ` Level ${earned.newLevel}!`;
+    ui.endSub.textContent += reward;
+
     this.events.emit(EventType.GAME_END, {
       winner: this.player.alive ? this.player.id : null,
       survivors: this.em.actors().filter(e=>e.alive).map(e => e.id)

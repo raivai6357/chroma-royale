@@ -350,7 +350,15 @@ class Room {
     // physics is nulled when the room returns to the lobby; never assume it.
     const gameStats = this.physics ? this.physics.getGameStats() : {};
 
-    // Record results for each player
+    // Record results for each player.
+    //
+    // Progression is client-owned now (src/profile.js, localStorage) — the client
+    // awards its own coins and xp from the game_end broadcast below and never
+    // reads these rows back. This is kept as a server-side audit trail: it costs
+    // one write per round, and it's the thing you'd want to already have if
+    // server-authoritative progression ever comes back. Note it's written under a
+    // playerId that's regenerated per connection (server/index.js), so rows never
+    // accumulate against a returning player.
     if (db && this.physics) {
       for (const [playerId, player] of this.players) {
         const entity = this.physics._getEntityByPlayerId(playerId);

@@ -564,23 +564,14 @@
   .stat-card.highlight{border-color:rgba(43,232,255,0.25);}
   .stat-value{display:block;font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--paper);}
   .stat-label{display:block;font-size:11px;color:var(--dim);margin-top:4px;letter-spacing:1px;}
-  .leaderboard-section h3{font-family:'Syne',sans-serif;font-size:15px;letter-spacing:2px;color:var(--dim);margin:14px 0 8px;}
-  .lb-tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
-  .lb-tab{
-    font-family:'Syne',sans-serif;font-weight:700;font-size:12px;
-    background:transparent;color:var(--dim);border:1px solid #3a3556;
-    padding:5px 12px;border-radius:999px;cursor:pointer;transition:all .15s;
+  /* Shown when localStorage is unreachable — partitioned inside a third-party
+     iframe, private browsing, or cookies off. Progress is client-side now, so
+     this is the difference between "you'll lose your coins" and finding out
+     after grinding for a skin. */
+  .storage-warning{
+    font-size:11px;color:#ffb84d;text-align:center;padding:6px 10px;line-height:1.4;
+    background:rgba(255,184,77,0.08);border-top:1px solid rgba(255,184,77,0.2);
   }
-  .lb-tab.active,.lb-tab:hover{color:var(--paper);border-color:var(--yellow);}
-  .lb-entry{
-    display:flex;align-items:center;gap:12px;padding:8px 12px;
-    border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;
-  }
-  .lb-entry.self{color:var(--cyan);}
-  .lb-rank{width:24px;color:var(--dim);font-weight:700;flex-shrink:0;}
-  .lb-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .lb-level{color:var(--dim);font-size:11px;flex-shrink:0;}
-  .lb-value{font-family:'Syne',sans-serif;font-weight:700;color:var(--yellow);flex-shrink:0;}
   .loading{color:var(--dim);font-size:13px;text-align:center;padding:20px 0;}
   /* server offline indicator */
   .conn-status{

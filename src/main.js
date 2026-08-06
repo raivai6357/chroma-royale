@@ -4,6 +4,7 @@ import { showOnlineMenu, hideOnlineMenu, initOnlineUI, isOnlineMenuVisible } fro
 import { network } from './network.js';
 import { onlineGame } from './onlineGame.js';
 import { initHowTo, showHowTo, isHowToOpen } from './howto.js';
+import { profile } from './profile.js';
 
 const game = new Game();
 
@@ -93,6 +94,43 @@ window.addEventListener('keydown', (e) => {
   if (!g) return;
   e.preventDefault();
   g.togglePause();
+});
+
+// Switching tabs pauses the round. rAF is throttled to roughly 1Hz (or stopped
+// outright) in a hidden tab, so without this an offline player comes back to a
+// blob that has barely moved while the zone kept closing on the last frame it
+// managed to draw, and dies with no explanation.
+//
+// visibilitychange, deliberately NOT blur. On CrazyGames the game runs inside a
+// third-party iframe, so the window loses focus on any click on the portal's own
+// chrome — pausing a live match for that would be a worse bug than this one.
+//
+// Online, pause() is an overlay over a round that keeps running server-side; the
+// player will often still die. showPause(false) says so. That's worth more than
+// dying with no idea why.
+function pauseForHidden() {
+  // Same guards as the Escape handler: How to Play and the online menu sit above
+  // the arena and own their own dismissal, so stacking a pause overlay beneath
+  // one strands the player behind two layers.
+  if (isHowToOpen() || isOnlineMenuVisible()) return;
+  const g = activeGame();
+  if (g) g.pause();
+}
+
+document.addEventListener('visibilitychange', () => {
+  // No auto-resume on the way back: dropping someone straight into a live fight
+  // before they've re-oriented is how you die to the thing you tabbed away from.
+  // The Resume button above is already wired.
+  if (document.hidden) pauseForHidden();
+});
+
+// iOS backstop — Safari can background a tab straight to pagehide without ever
+// firing visibilitychange. Also the right place for the synchronous profile
+// write: a hidden tab can be killed before a debounced save timer ever runs, and
+// that's a round's earnings gone.
+window.addEventListener('pagehide', () => {
+  pauseForHidden();
+  profile.flush();
 });
 
 document.getElementById('onlineBtn').addEventListener('click', () => {

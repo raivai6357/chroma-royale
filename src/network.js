@@ -61,7 +61,10 @@ function resolveServerUrl() {
 // object still EXISTS but touching it throws SecurityError — so a `typeof` check
 // isn't enough, and an unguarded read in the constructor would stop the game from
 // booting at all. Degrade to no persistence instead of dying.
-function storageGet(key) {
+// Exported for profile.js, which persists progression through the same guards.
+// Deliberately not duplicated there: two copies of this invites one of them
+// being fixed and the other quietly not.
+export function storageGet(key) {
   try {
     if (typeof localStorage === 'undefined') return null;
     return localStorage.getItem(key);
@@ -70,10 +73,20 @@ function storageGet(key) {
   }
 }
 
-function storageSet(key, value) {
+export function storageSet(key, value) {
   try {
     if (typeof localStorage === 'undefined') return false;
     localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function storageRemove(key) {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    localStorage.removeItem(key);
     return true;
   } catch (e) {
     return false;
@@ -126,15 +139,12 @@ export class NetworkClient {
     
     // Remote player states
     this.remoteEntities = new Map();
-    
-    // Player data from server
-    this.playerData = null;
-    
+
     // Matchmaking state
     this.inQueue = false;
     this.queuePosition = 0;
     this.queueSize = 0;
-    
+
     // Lobby state
     this.players = [];
     this.countdownSeconds = 0;
@@ -144,18 +154,13 @@ export class NetworkClient {
     this.roomsList = [];
 
     // Profile
+    // Only the display name lives here. Coins, xp, stats and cosmetics moved to
+    // profile.js/localStorage — the server minted a fresh playerId per socket, so
+    // everything it stored under one was orphaned the moment the tab closed.
+    // The nickname is different: the server genuinely needs it, for the lobby
+    // player list and the kill feed.
     this.playerName = storageGet('cr_nickname') || 'Player';
-    
-    // Cosmetics state
-    this.cosmeticsCatalog = null;
-    this.ownedCosmetics = [];
-    this.equippedCosmetics = {};
-    this.coins = 0;
-    
-    // Stats state
-    this.stats = null;
-    this.leaderboard = null;
-    
+
     // Latency tracking
     this._pingSentAt = 0;
     this._pingInterval = null;
@@ -192,11 +197,6 @@ export class NetworkClient {
     this.onCountdownTick = null;
     this.onReturnToLobby = null;
     this.onQueueUpdate = null;
-    this.onCosmeticsList = null;
-    this.onPurchaseResult = null;
-    this.onEquipResult = null;
-    this.onStatsResponse = null;
-    this.onLeaderboardResponse = null;
     this.onPingUpdate = null;
     this.onRoomsList = null;
     this.onNameSet = null;
@@ -394,10 +394,10 @@ export class NetworkClient {
         this.playerId = data.playerId;
         this.serverTick = data.serverTick;
         if (data.resumeToken) this.resumeToken = data.resumeToken;
-        if (data.playerData) {
-          this.playerData = data.playerData;
-          this.coins = data.playerData.coins || 0;
-        }
+        // data.playerData is deliberately ignored. The server generates a new
+        // playerId for every socket, so getOrCreatePlayer always takes the
+        // create path and hands back a zeroed profile — reading coins from it
+        // wiped the real balance the instant the online menu was opened.
         break;
 
       // Our seat was still warm: we're back in the same room with the same id.
@@ -540,42 +540,10 @@ export class NetworkClient {
         if (this.onQueueUpdate) this.onQueueUpdate(data);
         break;
         
-      // Cosmetics
-      case 'cosmetics_list':
-        this.cosmeticsCatalog = data.cosmetics;
-        this.ownedCosmetics = data.owned || [];
-        this.equippedCosmetics = data.equipped || {};
-        this.coins = data.coins || 0;
-        if (this.onCosmeticsList) this.onCosmeticsList(data);
-        break;
-        
-      case 'purchase_success':
-        if (data.owned) this.ownedCosmetics = data.owned;
-        if (data.coins !== undefined) this.coins = data.coins;
-        if (this.onPurchaseResult) this.onPurchaseResult({ success: true, ...data });
-        break;
-        
-      case 'purchase_failed':
-        if (this.onPurchaseResult) this.onPurchaseResult({ success: false, ...data });
-        break;
-        
-      case 'equip_success':
-        if (data.equipped) this.equippedCosmetics = data.equipped;
-        if (this.onEquipResult) this.onEquipResult({ success: true, ...data });
-        break;
-        
-      // Statistics
-      case 'stats_response':
-        this.stats = data.stats;
-        if (data.coins !== undefined) this.coins = data.coins;
-        if (this.onStatsResponse) this.onStatsResponse(data);
-        break;
-        
-      case 'leaderboard_response':
-        this.leaderboard = { stat: data.stat, entries: data.leaderboard };
-        if (this.onLeaderboardResponse) this.onLeaderboardResponse(data);
-        break;
-        
+      // The cosmetics_list / purchase_success / purchase_failed / equip_success /
+      // stats_response / leaderboard_response cases were removed with server-side
+      // progression. The server still handles the requests; nothing sends them.
+
       // Latency
       case 'pong':
         if (this._pingSentAt > 0) {
@@ -836,53 +804,25 @@ export class NetworkClient {
     this.inQueue = false;
   }
 
-  // ---------- Cosmetics Methods ----------
+  // getCosmetics / purchaseCosmetic / equipCosmetic / getStats / getLeaderboard
+  // were removed with server-side progression; see profile.js. Two of them never
+  // worked anyway: `_send({ type: 'purchase_cosmetic', type, id })` had a
+  // duplicate key, so the shorthand `type` (the category) overwrote the message
+  // type and the server saw an unknown message.
 
-  getCosmetics() {
-    this._send({ type: 'get_cosmetics' });
-  }
-
-  purchaseCosmetic(type, id) {
-    this._send({ type: 'purchase_cosmetic', type, id });
-  }
-
-  equipCosmetic(type, id) {
-    this._send({ type: 'equip_cosmetic', type, id });
-  }
-
-  // ---------- Statistics Methods ----------
-
-  getStats() {
-    this._send({ type: 'get_stats' });
-  }
-
-  getLeaderboard(stat = 'wins', limit = 10) {
-    this._send({ type: 'get_leaderboard', stat, limit });
-  }
-  
   // ---------- Utility ----------
-  
+
   tick() { this.clientTick++; }
-  
+
   getLatency() { return this.latency || INTERPOLATION_DELAY / 2; }
-  
+
   isInRoom() { return this.roomId !== null; }
-  
+
   isInQueue() { return this.inQueue; }
-  
+
   isReady() {
     const me = this.players.find(p => p.id === this.playerId);
     return me ? me.ready : false;
-  }
-  
-  getWinRate() {
-    if (!this.stats || !this.stats.gamesPlayed) return 0;
-    return ((this.stats.wins / this.stats.gamesPlayed) * 100).toFixed(1);
-  }
-  
-  getKDRatio() {
-    if (!this.stats || !this.stats.deaths) return this.stats ? this.stats.kills : 0;
-    return (this.stats.kills / this.stats.deaths).toFixed(2);
   }
 }
 

@@ -3,14 +3,8 @@
 
 import { network } from './network.js';
 import { enterFullscreenIfTouch } from './ui.js';
-
-// RARITY_COLORS from cosmetics
-const RARITY_COLORS = {
-  common: '#ffffff',
-  rare: '#4dabf7',
-  epic: '#be4bdb',
-  legendary: '#ffd43b'
-};
+import { profile } from './profile.js';
+import { COSMETICS, RARITY_COLORS, EQUIP_SLOT } from './cosmetics.js';
 
 let onlineMenu = null;
 let lobbyPanel = null;
@@ -55,6 +49,7 @@ export function initOnlineUI() {
         </div>
         <button class="btn-back" id="btn-online-back">← BACK</button>
       </div>
+      <div class="storage-warning hidden" id="storage-warning">⚠ Progress can't be saved in this browser</div>
     </div>
   `;
   
@@ -135,9 +130,15 @@ function switchTab(tabName) {
   onlineMenu.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
   document.getElementById(`${tabName}-panel`).classList.add('active');
   
-  // Refresh data when switching tabs
-  if (tabName === 'cosmetics' && network.connected) network.getCosmetics();
-  if (tabName === 'stats' && network.connected) network.getStats();
+  // Refresh data when switching tabs. Cosmetics and stats render straight from
+  // the local profile — no `network.connected` guard, because the shop and the
+  // stat sheet are now reachable with the server down or absent entirely.
+  if (tabName === 'cosmetics') {
+    updateFooter();
+    const activeCos = cosmeticsPanel.querySelector('.cos-tab.active');
+    renderCosmeticGrid(activeCos ? activeCos.dataset.cos : 'skins');
+  }
+  if (tabName === 'stats') { updateFooter(); renderStats(); }
   if (tabName === 'lobby') {
     updateLobbyView();
     if (network.roomId) updateLobbyPlayers();
@@ -465,25 +466,30 @@ function buildCosmeticsPanel() {
 
 function renderCosmeticGrid(type) {
   const grid = document.getElementById('cosmetics-grid');
-  if (!grid || !network.cosmeticsCatalog) {
-    grid.innerHTML = '<p class="loading">Loading cosmetics...</p>';
-    return;
-  }
-  
-  const items = network.cosmeticsCatalog[type];
+  if (!grid) return;
+
+  const items = COSMETICS[type];
   if (!items) {
     grid.innerHTML = '<p>No items available</p>';
     return;
   }
-  
+
+  const owned = profile.data.cosmetics.owned;
+  const equipped = profile.data.cosmetics.equipped;
+  const coins = profile.data.coins;
+
   grid.innerHTML = Object.entries(items).map(([id, item]) => {
-    const owned = network.ownedCosmetics.includes(id);
-    const equipped = network.equippedCosmetics && 
-      Object.values(network.equippedCosmetics).includes(id);
+    const isOwned = owned.includes(id);
+    // equipped is keyed by slot ('skin'), the grid by category ('skins'). The
+    // old check was Object.values(equipped).includes(id) — flat across all four
+    // slots, so equipping the 'fire' skin also lit up the 'fire' trail. Ids are
+    // only unique within a category, never across.
+    const isEquipped = equipped[EQUIP_SLOT[type]] === id;
     const rarityColor = RARITY_COLORS[item.rarity] || '#fff';
-    
+    const affordable = isOwned || coins >= item.cost;
+
     return `
-      <div class="cosmetic-item ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}" 
+      <div class="cosmetic-item ${isOwned ? 'owned' : ''} ${isEquipped ? 'equipped' : ''} ${affordable ? '' : 'locked'}"
            data-type="${type}" data-id="${id}">
         <div class="cos-preview" style="border-color: ${rarityColor}">
           <div class="cos-icon">${getCosmeticIcon(type, id)}</div>
@@ -491,13 +497,13 @@ function renderCosmeticGrid(type) {
         <div class="cos-info">
           <span class="cos-name">${item.name}</span>
           <span class="cos-rarity" style="color: ${rarityColor}">${item.rarity}</span>
-          ${!owned ? `<span class="cos-cost">🪙 ${item.cost}</span>` : ''}
-          ${equipped ? '<span class="cos-equipped">✓ Equipped</span>' : ''}
+          ${!isOwned ? `<span class="cos-cost">🪙 ${item.cost}</span>` : ''}
+          ${isEquipped ? '<span class="cos-equipped">✓ Equipped</span>' : ''}
         </div>
       </div>
     `;
   }).join('');
-  
+
   // Click handlers
   grid.querySelectorAll('.cosmetic-item').forEach(el => {
     el.addEventListener('click', () => {
@@ -519,63 +525,47 @@ function getCosmeticIcon(type, id) {
 }
 
 function handleCosmeticClick(type, id) {
-  const owned = network.ownedCosmetics.includes(id);
-
-  if (owned) {
-    network.equipCosmetic(type, id);
+  if (profile.owns(id)) {
+    profile.equip(type, id);
+    updateFooter();
+    renderCosmeticGrid(type);
   } else {
-    // Try to purchase
-    const catalog = network.cosmeticsCatalog[type];
-    if (catalog && catalog[id]) {
-      const item = catalog[id];
-      if (network.coins >= item.cost) {
-        network.purchaseCosmetic(type, id);
-      }
+    const res = profile.purchase(type, id);
+    // Only refresh when the purchase succeeds. On failure (not enough coins, or
+    // the item doesn't exist) the grid stays unchanged, the footer still shows
+    // the same balance, and the visual feedback is "nothing happened" — clear
+    // enough when the cost is right there and higher than the coin count.
+    if (res.ok) {
+      updateFooter();
+      renderCosmeticGrid(type);
     }
   }
 }
 
 // ---------- Stats Panel ----------
 
+// The leaderboard that used to live here was removed along with server-side
+// progression: stats are now kept in localStorage, so a ranking built from them
+// ranks whatever players are willing to type into devtools. Per-player stats
+// stay — they're a personal record, and nobody is cheated by an inflated one.
 function buildStatsPanel() {
   statsPanel.innerHTML = `
     <div class="stats-content">
       <div class="stats-grid" id="stats-grid">
         <!-- Populated dynamically -->
       </div>
-      
-      <div class="leaderboard-section">
-        <h3>Leaderboard</h3>
-        <div class="lb-tabs">
-          <button class="lb-tab active" data-stat="wins">Wins</button>
-          <button class="lb-tab" data-stat="kills">Kills</button>
-          <button class="lb-tab" data-stat="damageDealt">Damage</button>
-          <button class="lb-tab" data-stat="bestStreak">Streak</button>
-        </div>
-        <div class="lb-list" id="leaderboard-list">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
     </div>
   `;
-  
-  statsPanel.querySelectorAll('.lb-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      statsPanel.querySelectorAll('.lb-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      network.getLeaderboard(btn.dataset.stat);
-    });
-  });
 }
 
 function renderStats() {
   const grid = document.getElementById('stats-grid');
-  if (!grid || !network.stats) {
-    if (grid) grid.innerHTML = '<p class="loading">Loading stats...</p>';
-    return;
-  }
-  
-  const s = network.stats;
+  if (!grid) return;
+
+  // Always renderable now — the profile has a valid stats object from the first
+  // load, so there is no "loading" state and no way for this to be called
+  // before the data exists.
+  const s = profile.data.stats;
   const winRate = s.gamesPlayed > 0 ? ((s.wins / s.gamesPlayed) * 100).toFixed(1) : '0.0';
   const kdRatio = s.deaths > 0 ? (s.kills / s.deaths).toFixed(2) : s.kills.toString();
   
@@ -615,25 +605,6 @@ function renderStats() {
   `;
 }
 
-function renderLeaderboard() {
-  const list = document.getElementById('leaderboard-list');
-  if (!list) return;
-  
-  if (!network.leaderboard || !network.leaderboard.entries) {
-    list.innerHTML = '<p class="loading">Loading...</p>';
-    return;
-  }
-  
-  list.innerHTML = network.leaderboard.entries.map((entry, i) => `
-    <div class="lb-entry ${entry.id === network.playerId ? 'self' : ''}">
-      <span class="lb-rank">${i + 1}</span>
-      <span class="lb-name">${entry.name}</span>
-      <span class="lb-level">Lv.${entry.level}</span>
-      <span class="lb-value">${entry.value}</span>
-    </div>
-  `).join('');
-}
-
 // ---------- Network Callbacks ----------
 
 function setConnStatus(online) {
@@ -648,7 +619,6 @@ function setupNetworkCallbacks() {
     setConnStatus(true);
     renderNickname(network.playerName || 'Player');
     updateFooter();
-    network.getStats();
     // If the Lobby tab is already open, populate the room list now
     const lobbyActive = onlineMenu.querySelector('[data-tab="lobby"]')?.classList.contains('active');
     if (lobbyActive && !network.roomId) network.listRooms();
@@ -706,35 +676,14 @@ function setupNetworkCallbacks() {
     updateReadyButton(false);
   };
   
-  network.onCosmeticsList = () => {
-    updateFooter();
-    const activeTab = cosmeticsPanel.querySelector('.cos-tab.active');
-    if (activeTab) renderCosmeticGrid(activeTab.dataset.cos);
-  };
-  
-  network.onPurchaseResult = (data) => {
-    if (data.success) {
-      updateFooter();
-      const activeTab = cosmeticsPanel.querySelector('.cos-tab.active');
-      if (activeTab) renderCosmeticGrid(activeTab.dataset.cos);
-    }
-  };
-  
-  network.onEquipResult = () => {
-    const activeTab = cosmeticsPanel.querySelector('.cos-tab.active');
-    if (activeTab) renderCosmeticGrid(activeTab.dataset.cos);
-  };
-  
-  network.onStatsResponse = () => {
-    updateFooter();
-    renderStats();
-    network.getLeaderboard('wins');
-  };
-  
-  network.onLeaderboardResponse = () => {
-    renderLeaderboard();
-  };
-  
+  // onCosmeticsList / onPurchaseResult / onEquipResult / onStatsResponse /
+  // onLeaderboardResponse used to live here. Every one of them was a round trip
+  // waiting for the server to confirm a change to data the client now owns
+  // outright, so the shop and stats panel re-render synchronously at the call
+  // site instead. This also fixes them: purchase and equip never reached the
+  // server at all (a duplicate object key overwrote the message type), so the
+  // result callbacks they were waiting on could not fire.
+
   network.onPingUpdate = () => {
     document.getElementById('ping-value').textContent = network.getLatency();
   };
@@ -778,9 +727,18 @@ function updateFooter() {
   const levelEl = document.getElementById('level-value');
   const pingEl = document.getElementById('ping-value');
 
-  if (coinsEl) coinsEl.textContent = network.coins || 0;
-  if (levelEl) levelEl.textContent = network.playerData ? network.playerData.level : 1;
+  // profile, not network: the server minted an empty profile per socket, so
+  // reading coins from the connection zeroed the display the moment the menu
+  // opened. Ping is the one number here that genuinely belongs to the socket.
+  if (coinsEl) coinsEl.textContent = profile.data.coins;
+  if (levelEl) levelEl.textContent = profile.data.level;
   if (pingEl) pingEl.textContent = network.getLatency();
+
+  // Storage can be blocked outright — third-party-cookie partitioning inside the
+  // CrazyGames iframe, or private browsing. Say so rather than letting someone
+  // grind for a skin that won't survive the tab closing.
+  const warnEl = document.getElementById('storage-warning');
+  if (warnEl) warnEl.classList.toggle('hidden', profile.isPersistent());
 }
 
 // ---------- Show/Hide ----------
@@ -791,10 +749,10 @@ export function showOnlineMenu() {
 
   setConnStatus(network.connected);
 
-  if (network.connected) {
-    network.getStats();
-    network.getCosmetics();
-  }
+  // Was two server fetches behind an `if (network.connected)` guard, which meant
+  // the coin balance and level read 0 whenever the socket was down. Progression
+  // is local now, so this renders unconditionally and is correct offline.
+  updateFooter();
 }
 
 export function hideOnlineMenu() {
